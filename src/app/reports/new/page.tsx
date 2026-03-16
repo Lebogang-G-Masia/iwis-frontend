@@ -1,15 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { type FormEvent, useState } from "react";
 
+const CreateReportMap = dynamic(
+  () => import("@/components/CreateReportMap"),
+  {
+    ssr: false,
+    loading: () => <div className="create-report-map__canvas create-report-map__loading">Loading map…</div>,
+  },
+);
+
 type ReportType = "field-worker" | "citizen-scientist" | "admin";
+
+interface PinCoords {
+  lat: number;
+  lng: number;
+}
 
 export default function NewReportPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reportType, setReportType] = useState<ReportType>("citizen-scientist");
   const [photoName, setPhotoName] = useState("");
+  const [pinned, setPinned] = useState<PinCoords | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -38,12 +53,13 @@ export default function NewReportPage() {
       <form className="create-report-form" onSubmit={onSubmit}>
         <div className="create-report-grid">
           <article className="create-report-map-panel">
-            <div className="create-report-map-preview" aria-label="Map preview">
-              <span className="create-report-map-pin" aria-hidden="true">
-                📍
-              </span>
-              <span className="create-report-map-label">Hartbeespoort Dam</span>
-            </div>
+            <p className="create-report-map-hint">Click on the map to pin the sighting location.</p>
+            <CreateReportMap pinned={pinned} onPin={setPinned} />
+            {pinned && (
+              <p className="create-report-map-coords">
+                📍 {pinned.lat.toFixed(5)}, {pinned.lng.toFixed(5)}
+              </p>
+            )}
 
             <label className="create-report-upload-box" htmlFor="camera-upload">
               <span aria-hidden="true">📷</span>

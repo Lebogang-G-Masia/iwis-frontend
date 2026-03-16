@@ -777,40 +777,32 @@ body {
   gap: 10px;
 }
 
-.create-report-map-preview {
-  position: relative;
+.create-report-map__canvas {
+  width: 100%;
+  height: 240px;
   border: 1px solid #d0dce7;
   border-radius: 8px;
-  height: 180px;
-  overflow: hidden;
-  background:
-    linear-gradient(130deg, rgba(218, 229, 239, 0.9), rgba(201, 215, 229, 0.9)),
-    repeating-linear-gradient(
-      32deg,
-      rgba(255, 255, 255, 0.55),
-      rgba(255, 255, 255, 0.55) 8px,
-      rgba(227, 236, 245, 0.52) 8px,
-      rgba(227, 236, 245, 0.52) 16px
-    );
+  cursor: crosshair;
 }
 
-.create-report-map-pin {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -56%);
-  font-size: 1.35rem;
+.create-report-map__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f5fa;
+  color: #50708d;
+  font-size: 0.88rem;
 }
 
-.create-report-map-label {
-  position: absolute;
-  left: 12px;
-  bottom: 10px;
-  border-radius: 999px;
-  border: 1px solid #c9d7e4;
-  background: rgba(255, 255, 255, 0.88);
-  color: #37536f;
-  padding: 4px 10px;
+.create-report-map-hint {
+  margin: 0;
+  color: #50708d;
+  font-size: 0.82rem;
+}
+
+.create-report-map-coords {
+  margin: 0;
+  color: #2b6945;
   font-size: 0.8rem;
   font-weight: 600;
 }
