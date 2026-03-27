@@ -124,6 +124,7 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
       fetch(`${baseUrl}/water-readings?limit=24`, { cache: "no-store" }),
       fetch(`${baseUrl}/weather-readings?limit=1`, { cache: "no-store" }),
       fetch(`${baseUrl}/map/sensors`, { cache: "no-store" }),
+      fetch(`${baseUrl}/alerts`, { cache: "no-store" }),
     ]);
 
     if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok) {
@@ -180,6 +181,18 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
           dissolvedOxygen: 0
         }
       }));
+    }
+
+    const alertsData = await alertsRes.json();
+
+    if (alertsData && alertsData.length > 0) {
+      partialDashboard.alerts = alertsData.map((alert: any) => ({
+        id: `alert-${alert.id}`,
+        title: `${alert.alert_type} (${alert.threshold_val} mg/L limit exceeded)`,
+        severity: "high"
+      }));
+    } else {
+      partialDashboard.alerts = []; 
     }
 
     return partialDashboard;
