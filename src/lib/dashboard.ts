@@ -1,7 +1,6 @@
 import { type CitizenReport, fetchReports } from "@/lib/reports";
 
 export type TimeWindow = "24h" | "30d";
-
 export type TrendMetric = "nitrate" | "phosphate" | "temperature";
 
 export interface DashboardAlert {
@@ -27,7 +26,7 @@ export interface TrendSeries {
 export interface WeatherConditions {
   windSpeed: number;
   airTemp: number;
-  windDirection: string;
+  windDirection: string | number;
 }
 
 export interface RecentReport {
@@ -42,7 +41,7 @@ export interface SensorMapPoint {
   type: "sensor";
   lat: number;
   lng: number;
-  latestReadings: SensorSnapshot;
+  latestReadings: SensorSnapshot; // No longer optional, map requires it
 }
 
 export interface ReportMapPoint {
@@ -80,121 +79,157 @@ export interface DashboardData {
   };
 }
 
-const HARTBEESPOORT_DAM_COORDS = {
-  lat: -25.7343,
-  lng: 27.8587,
-};
+const HARTBEESPOORT_DAM_COORDS = { lat: -25.7343, lng: 27.8587 };
 
+// ---------------------------------------------------------
+// BACKEND INTERFACES (Matches FastAPI schemas.py)
+// ---------------------------------------------------------
+interface BackendWaterReading {
+  id: number;
+  recorded_at: string;
+  ph: number;
+  temperature_c: number;
+  nitrates_mg_l: number;
+  turbidity_ntu: number;
+  dissolved_oxygen_mg_l: number;
+}
+
+interface BackendWeatherReading {
+  id: number;
+  recorded_at: string;
+  wind_speed_m_s: number;
+  wind_direction_deg: number;
+  air_temperature_c: number;
+}
+
+interface BackendSensorFeature {
+  type: "Feature";
+  id: number;
+  geometry: { type: "Point"; coordinates: [number, number] };
+  properties: { name: string; sensor_type: string; is_active: boolean };
+}
+
+// ---------------------------------------------------------
+// FETCHING LOGIC
+// ---------------------------------------------------------
+async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<DashboardData> | null> {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!apiBaseUrl) return null;
+
+  const baseUrl = apiBaseUrl.replace(/\/$/, "");
+  
+  try {
+    // Fetch live data from FastAPI in parallel
+    const [waterRes, weatherRes, sensorsRes] = await Promise.all([
+      fetch(`${baseUrl}/water-readings?limit=24`, { cache: "no-store" }),
+      fetch(`${baseUrl}/weather-readings?limit=1`, { cache: "no-store" }),
+      fetch(`${baseUrl}/map/sensors`, { cache: "no-store" }),
+    ]);
+
+    if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok) {
+      throw new Error("One or more backend requests failed.");
+    }
+
+    const waterData = (await waterRes.json()) as BackendWaterReading[];
+    const weatherData = (await weatherRes.json()) as BackendWeatherReading[];
+    const sensorsData = await sensorsRes.json();
+
+    const partialDashboard: Partial<DashboardData> = {};
+
+    // 1. Process Latest Water Readings
+    if (waterData.length > 0) {
+      const latestWater = waterData[0]; // Assuming descending order from backend
+      partialDashboard.currentReadings = {
+        ph: latestWater.ph,
+        nitrate: latestWater.nitrates_mg_l,
+        temperature: latestWater.temperature_c,
+        dissolvedOxygen: latestWater.dissolved_oxygen_mg_l,
+      };
+
+      // Extract trend points (reverse so oldest is left, newest is right on chart)
+      partialDashboard.trends = {
+        nitrate: { unit: "mg/L", points: waterData.map(d => d.nitrates_mg_l).reverse() },
+        temperature: { unit: "°C", points: waterData.map(d => d.temperature_c).reverse() },
+        phosphate: { unit: "mg/L", points: [] }, // Backend doesn't have phosphate yet
+      };
+    }
+
+    // 2. Process Latest Weather Reading
+    if (weatherData.length > 0) {
+      const latestWeather = weatherData[0];
+      partialDashboard.weather = {
+        windSpeed: latestWeather.wind_speed_m_s * 3.6, // convert m/s to km/h
+        airTemp: latestWeather.air_temperature_c,
+        windDirection: latestWeather.wind_direction_deg,
+      };
+    }
+
+    // 3. Process Sensor Map Points with Fallback Readings
+    if (sensorsData && sensorsData.features) {
+      partialDashboard.mapPoints = sensorsData.features.map((feature: BackendSensorFeature) => ({
+        id: `sensor-${feature.id}`,
+        label: feature.properties.name || "Unknown Sensor",
+        type: "sensor",
+        lng: feature.geometry.coordinates[0],
+        lat: feature.geometry.coordinates[1],
+        // Provide the global readings to the map popup, or safe defaults if none exist
+        latestReadings: partialDashboard.currentReadings || {
+          ph: 0,
+          nitrate: 0,
+          temperature: 0,
+          dissolvedOxygen: 0
+        }
+      }));
+    }
+
+    return partialDashboard;
+
+  } catch (error) {
+    console.warn("Falling back entirely to mock dashboard data", error);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------
+// DATA MERGING & MOCKS
+// ---------------------------------------------------------
 function getMockData(window: TimeWindow): DashboardData {
-  const longWindow = window === "30d";
-  const sensorBaseline: SensorSnapshot = {
-    ph: longWindow ? 7.1 : 7.2,
-    nitrate: longWindow ? 7.6 : 8,
-    temperature: longWindow ? 22 : 23,
-    dissolvedOxygen: longWindow ? 5.8 : 5.6,
-  };
-
   return {
     locationName: "Hartbeespoort Dam",
-    alerts: [
-      {
-        id: "alert-1",
-        title: "High nitrate levels detected",
-        severity: "high",
-      },
-    ],
-    currentReadings: {
-      ...sensorBaseline,
-    },
+    alerts: [{ id: "alert-1", title: "High nitrate levels detected", severity: "high" }],
+    currentReadings: { ph: 7.2, nitrate: 8, temperature: 23, dissolvedOxygen: 5.6 },
     trends: {
-      nitrate: {
-        unit: "mg/L",
-        points: longWindow
-          ? [1.1, 1.4, 1.8, 1.6, 2.2, 2.5, 2.1, 2.8, 2.4, 2.7]
-          : [0.7, 1.2, 0.9, 2.8, 1.1, 0.8, 2.5, 0.6, 1.3, 0.7, 1.5, 0.9],
-      },
-      phosphate: {
-        unit: "mg/L",
-        points: longWindow
-          ? [0.4, 0.5, 0.8, 1.1, 0.7, 0.9, 1.3, 1.2, 1, 0.9]
-          : [0.2, 0.4, 0.6, 0.5, 0.7, 0.9, 0.6, 0.5, 0.8, 0.6, 0.7, 0.5],
-      },
-      temperature: {
-        unit: "°C",
-        points: longWindow
-          ? [20, 21, 22, 23, 23, 24, 24, 23, 22, 22]
-          : [21, 22, 22, 23, 24, 23, 24, 25, 24, 23, 23, 22],
-      },
+      nitrate: { unit: "mg/L", points: [0.7, 1.2, 0.9, 2.8, 1.1, 0.8, 2.5] },
+      phosphate: { unit: "mg/L", points: [0.2, 0.4, 0.6, 0.5, 0.7, 0.9] },
+      temperature: { unit: "°C", points: [21, 22, 22, 23, 24, 23, 24] },
     },
-    weather: {
-      windSpeed: 12,
-      airTemp: 24,
-      windDirection: "NW",
-    },
+    weather: { windSpeed: 12, airTemp: 24, windDirection: "NW" },
     recentReports: [],
-    mapPoints: [
-      {
-        id: "sensor-north-shore",
-        label: "North Shore Sensor",
-        type: "sensor",
-        lat: HARTBEESPOORT_DAM_COORDS.lat + 0.011,
-        lng: HARTBEESPOORT_DAM_COORDS.lng - 0.03,
-        latestReadings: {
-          ph: sensorBaseline.ph,
-          nitrate: sensorBaseline.nitrate,
-          temperature: sensorBaseline.temperature,
-          dissolvedOxygen: sensorBaseline.dissolvedOxygen,
-        },
-      },
-      {
-        id: "sensor-central-basin",
-        label: "Central Basin Sensor",
-        type: "sensor",
-        lat: HARTBEESPOORT_DAM_COORDS.lat - 0.004,
-        lng: HARTBEESPOORT_DAM_COORDS.lng + 0.006,
-        latestReadings: {
-          ph: longWindow ? 7 : 7.1,
-          nitrate: longWindow ? 8.1 : 8.4,
-          temperature: longWindow ? 22.4 : 23.2,
-          dissolvedOxygen: longWindow ? 5.7 : 5.4,
-        },
-      },
-    ],
+    mapPoints: [],
     pollutionHotspots: [
-      {
-        id: "hotspot-east-shore",
-        lat: HARTBEESPOORT_DAM_COORDS.lat - 0.014,
-        lng: HARTBEESPOORT_DAM_COORDS.lng + 0.028,
-        intensity: "high",
-        radiusMeters: 640,
-      },
-      {
-        id: "hotspot-central",
-        lat: HARTBEESPOORT_DAM_COORDS.lat - 0.002,
-        lng: HARTBEESPOORT_DAM_COORDS.lng + 0.004,
-        intensity: "medium",
-        radiusMeters: 520,
-      },
-      {
-        id: "hotspot-northwest",
-        lat: HARTBEESPOORT_DAM_COORDS.lat + 0.011,
-        lng: HARTBEESPOORT_DAM_COORDS.lng - 0.019,
-        intensity: "low",
-        radiusMeters: 430,
-      },
+      { id: "hotspot-central", lat: HARTBEESPOORT_DAM_COORDS.lat - 0.002, lng: HARTBEESPOORT_DAM_COORDS.lng + 0.004, intensity: "medium", radiusMeters: 520 },
     ],
-    indices: {
-      correlation: longWindow ? 0.81 : 0.76,
-      pollutionHeatmap: longWindow ? 67 : 72,
-    },
+    indices: { correlation: 0.76, pollutionHeatmap: 72 },
   };
 }
 
-function getShortSummary(text: string, maxLength = 92): string {
-  if (text.length <= maxLength) {
-    return text;
-  }
+export async function fetchDashboardData(window: TimeWindow): Promise<DashboardData> {
+  // Get whatever live data we can from the backend
+  const backendData = await fetchDashboardFromBackend(window);
+  
+  // Start with mock data, then overwrite it with any live data we successfully fetched
+  const baseData = { ...getMockData(window), ...backendData };
 
+  try {
+    const reports = await fetchReports();
+    return mergeReportsIntoDashboardData(baseData, reports as CitizenReport[]);
+  } catch {
+    return baseData;
+  }
+}
+
+function getShortSummary(text: string, maxLength = 92): string {
+  if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength).trim()}...`;
 }
 
@@ -210,78 +245,15 @@ function mapCitizenReportsToMapPoints(reports: CitizenReport[]): ReportMapPoint[
   }));
 }
 
-function mapCitizenReportsToRecentReports(reports: CitizenReport[]): RecentReport[] {
-  return reports.slice(0, 3).map((report) => ({
-    id: report.id,
-    title: report.title,
-    summary: getShortSummary(report.description),
-  }));
-}
-
-function mergeReportsIntoDashboardData(
-  dashboardData: DashboardData,
-  reports: CitizenReport[],
-): DashboardData {
-  const sensorMapPoints = dashboardData.mapPoints.filter(
-    (point): point is SensorMapPoint => point.type === "sensor",
-  );
-
+function mergeReportsIntoDashboardData(dashboardData: DashboardData, reports: CitizenReport[]): DashboardData {
+  const sensorMapPoints = dashboardData.mapPoints.filter(point => point.type === "sensor");
   return {
     ...dashboardData,
     mapPoints: [...sensorMapPoints, ...mapCitizenReportsToMapPoints(reports)],
-    recentReports: mapCitizenReportsToRecentReports(reports),
+    recentReports: reports.slice(0, 3).map(report => ({
+      id: report.id,
+      title: report.title,
+      summary: getShortSummary(report.description),
+    })),
   };
-}
-
-function isDashboardData(payload: unknown): payload is DashboardData {
-  if (!payload || typeof payload !== "object") {
-    return false;
-  }
-
-  const candidate = payload as Partial<DashboardData>;
-  return Boolean(
-    candidate.locationName &&
-      candidate.currentReadings &&
-      candidate.trends &&
-      candidate.weather &&
-      Array.isArray(candidate.recentReports) &&
-      Array.isArray(candidate.mapPoints) &&
-      Array.isArray(candidate.pollutionHotspots),
-  );
-}
-
-async function fetchDashboardFromBackend(
-  window: TimeWindow,
-): Promise<DashboardData | null> {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!apiBaseUrl) {
-    return null;
-  }
-
-  const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/dashboard?window=${window}`;
-
-  try {
-    const response = await fetch(endpoint, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Dashboard request failed with status ${response.status}`);
-    }
-
-    const payload = (await response.json()) as unknown;
-    return isDashboardData(payload) ? payload : null;
-  } catch (error) {
-    console.warn("Falling back to mock dashboard data", error);
-    return null;
-  }
-}
-
-export async function fetchDashboardData(window: TimeWindow): Promise<DashboardData> {
-  const backendData = await fetchDashboardFromBackend(window);
-  const baseData = backendData ?? getMockData(window);
-
-  try {
-    const reports = await fetchReports();
-    return mergeReportsIntoDashboardData(baseData, reports);
-  } catch {
-    return baseData;
-  }
 }

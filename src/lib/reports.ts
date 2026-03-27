@@ -15,93 +15,62 @@ export interface CitizenReport {
   location: ReportLocation;
 }
 
+// Added interface to match FastAPI's CitizenReportRead schema
+interface BackendCitizenReport {
+  id: number;
+  created_at: string;
+  description: string;
+  photo_url: string | null;
+  reporter_name: string | null;
+  status: string;
+  latitude: number;
+  longitude: number;
+}
+
 const MOCK_REPORTS: CitizenReport[] = [
   {
     id: "rep-1001",
     title: "Foam Build-Up Near South Pier",
     type: "field-worker",
     submittedBy: "Thabo M.",
-    description:
-      "Visible white foam concentrated near the south pier for roughly 40 meters. Water odor is stronger than normal.",
+    description: "Visible white foam concentrated near the south pier for roughly 40 meters. Water odor is stronger than normal.",
     photoUrl: "/report-photo.svg",
     submittedAt: "2026-03-08T10:22:00.000Z",
-    location: {
-      lat: -25.7468,
-      lng: 27.8438,
-      area: "South Pier",
-    },
+    location: { lat: -25.7468, lng: 27.8438, area: "South Pier" },
   },
   {
     id: "rep-1002",
     title: "Algae Bloom at Northern Bank",
     type: "citizen-scientist",
     submittedBy: "Lerato K.",
-    description:
-      "Dark green algae mats observed drifting toward the boat launch area. Approximate spread: 80 to 120 meters.",
+    description: "Dark green algae mats observed drifting toward the boat launch area. Approximate spread: 80 to 120 meters.",
     photoUrl: "/report-photo.svg",
     submittedAt: "2026-03-08T14:10:00.000Z",
-    location: {
-      lat: -25.7219,
-      lng: 27.8718,
-      area: "Northern Bank",
-    },
-  },
-  {
-    id: "rep-1003",
-    title: "Dead Fish Sighting",
-    type: "field-worker",
-    submittedBy: "Nomsa P.",
-    description:
-      "Three dead fish located close to shallow reeds. No visible oil slick, but water clarity is low.",
-    photoUrl: "/report-photo.svg",
-    submittedAt: "2026-03-09T06:35:00.000Z",
-    location: {
-      lat: -25.733,
-      lng: 27.8894,
-      area: "Eastern Reeds",
-    },
-  },
-  {
-    id: "rep-1004",
-    title: "Illegal Dumping Signs",
-    type: "admin",
-    submittedBy: "IWIS Admin",
-    description:
-      "Plastic bags and mixed waste found along the western shore footpath. Team cleanup requested.",
-    photoUrl: "/report-photo.svg",
-    submittedAt: "2026-03-09T09:42:00.000Z",
-    location: {
-      lat: -25.7408,
-      lng: 27.8299,
-      area: "Western Shore",
-    },
+    location: { lat: -25.7219, lng: 27.8718, area: "Northern Bank" },
   },
 ];
 
-function isReportType(value: unknown): value is CitizenReport["type"] {
-  return value === "field-worker" || value === "citizen-scientist" || value === "admin";
-}
+// Translates FastAPI data to Next.js UI data
+function mapBackendReportToFrontend(backendReport: BackendCitizenReport): CitizenReport {
+  // Extract a short title from the description if it exists
+  const extractedTitle = backendReport.description 
+    ? backendReport.description.split('.')[0].slice(0, 40) + (backendReport.description.length > 40 ? "..." : "")
+    : "Citizen Report";
 
-function isCitizenReport(value: unknown): value is CitizenReport {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const report = value as Partial<CitizenReport>;
-
-  return Boolean(
-    typeof report.id === "string" &&
-      typeof report.title === "string" &&
-      isReportType(report.type) &&
-      typeof report.submittedBy === "string" &&
-      typeof report.description === "string" &&
-      typeof report.photoUrl === "string" &&
-      typeof report.submittedAt === "string" &&
-      report.location &&
-      typeof report.location.area === "string" &&
-      typeof report.location.lat === "number" &&
-      typeof report.location.lng === "number",
-  );
+  return {
+    id: String(backendReport.id),
+    title: extractedTitle,
+    type: "citizen-scientist", // Defaulting as backend doesn't store this yet
+    submittedBy: backendReport.reporter_name || "Anonymous",
+    description: backendReport.description || "No description provided.",
+    photoUrl: backendReport.photo_url || "/report-photo.svg",
+    submittedAt: backendReport.created_at,
+    location: {
+      lat: backendReport.latitude,
+      lng: backendReport.longitude,
+      area: "Coordinates provided", 
+    },
+  };
 }
 
 async function fetchReportsFromBackend(): Promise<CitizenReport[] | null> {
@@ -110,7 +79,8 @@ async function fetchReportsFromBackend(): Promise<CitizenReport[] | null> {
     return null;
   }
 
-  const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/reports`;
+  // Updated endpoint to match main.py
+  const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/citizen-reports`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -118,12 +88,12 @@ async function fetchReportsFromBackend(): Promise<CitizenReport[] | null> {
       throw new Error(`Reports request failed with status ${response.status}`);
     }
 
-    const payload = (await response.json()) as unknown;
+    const payload = (await response.json()) as BackendCitizenReport[];
     if (!Array.isArray(payload)) {
       return null;
     }
 
-    return payload.filter((report): report is CitizenReport => isCitizenReport(report));
+    return payload.map(mapBackendReportToFrontend);
   } catch (error) {
     console.warn("Falling back to mock reports data", error);
     return null;
