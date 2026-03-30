@@ -17,7 +17,7 @@ This is the Next.js frontend for the Integrated Water Information System (IWIS).
 
 **1. Clone the repo 
 ```bash
-git clone git@github.com:LiefsEmma/iwis-frontend.git
+git clone git@github.com:username/iwis-frontend.git
 ```
 
 **2. Install dependencies**
