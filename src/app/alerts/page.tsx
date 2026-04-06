@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchDashboardData, type SensorMapPoint } from "@/lib/dashboard";
 
-// Parameters aligned with dashboard CurrentReadings.
-// Add turbidity here once the backend API supplies it.
 type ParameterKey = "ph" | "temperature" | "nitrate" | "dissolvedOxygen";
 type AlertStatus = "active" | "resolved" | "dismissed";
 type SensorReading = {
@@ -35,88 +33,17 @@ const PARAMETER_META: Record<
 > = {
   ph: { label: "PH", unit: "pH", threshold: 8.5, min: 6.0, max: 10.0 },
   temperature: { label: "Temperature", unit: "C", threshold: 25.0, min: 15, max: 30 },
-  nitrate: { label: "Nitrate", unit: "mg/L", threshold: 8.5, min: 0.5, max: 15 },
+  nitrate: { label: "Nitrate", unit: "mg/L", threshold: 5.0, min: 0.5, max: 15 },
   dissolvedOxygen: { label: "Dissolved Oxygen", unit: "mg/L", threshold: 12.0, min: 4.0, max: 14.5 },
 };
 
-const PARAMETER_KEYS: ParameterKey[] = ["ph", "temperature", "nitrate", "dissolvedOxygen"];
-
-const STORAGE_KEY = "iwis_alerts_v1";
-const COUNTER_KEY = "iwis_alert_counter_v1";
-
-function loadStoredAlerts(): AlertItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed as AlertItem[];
-  } catch {
-    return [];
-  }
-}
-
-function saveAlerts(alerts: AlertItem[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
-  } catch {
-    // storage quota exceeded – silently ignore
-  }
-}
-
-function loadStoredCounter(): number {
-  try {
-    const raw = localStorage.getItem(COUNTER_KEY);
-    return raw ? Number(raw) : 1;
-  } catch {
-    return 1;
-  }
-}
-
-function saveCounter(value: number) {
-  try {
-    localStorage.setItem(COUNTER_KEY, String(value));
-  } catch {
-    // ignore
-  }
-}
-
-function formatTimestamp(timestamp: number) {
+function formatTimestamp(timestamp: number | string) {
   return new Date(timestamp).toLocaleString("en-ZA", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  });
-}
-
-function round(value: number, digits = 2) {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function evolveSensors(previous: SensorReading[]) {
-  return previous.map((sensor) => {
-    const nextValues = { ...sensor.values };
-
-    for (const parameter of PARAMETER_KEYS) {
-      const meta = PARAMETER_META[parameter];
-      const range = meta.max - meta.min;
-      const step = (Math.random() - 0.5) * range * 0.06;
-      const driftBias = Math.random() < 0.15 ? range * 0.035 : 0;
-      const nextValue = sensor.values[parameter] + step + driftBias;
-      nextValues[parameter] = round(clamp(nextValue, meta.min, meta.max));
-    }
-
-    return {
-      ...sensor,
-      values: nextValues,
-    };
   });
 }
 
@@ -133,21 +60,37 @@ export default function AlertsPage() {
   const [monitoring, setMonitoring] = useState(true);
 
   const panelRef = useRef<HTMLDivElement>(null);
-  const alertCounterRef = useRef(1);
-  const latestReadingsRef = useRef<SensorReading[]>([]);
-  const activeKeysRef = useRef<Set<string>>(new Set());
+  
+  const [resolvedCount, setResolvedCount] = useState(0);
+  const [dismissedCount, setDismissedCount] = useState(0);
 
-  // Load persisted alerts and counter from localStorage after mount (client only).
-  // Promise.resolve defers setState to avoid synchronous-in-effect lint rule.
+  // Initial load of alerts from backend
   useEffect(() => {
-    alertCounterRef.current = loadStoredCounter();
-    Promise.resolve(loadStoredAlerts()).then((stored) => {
-      if (stored.length > 0) {
-        setAlerts(stored);
+    async function loadAlerts() {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      try {
+        const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts`, { cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json();
+          const mappedAlerts: AlertItem[] = data.map((a: any) => ({
+            id: String(a.id),
+            parameter: "nitrate", // Assuming only nitrate alerts for now
+            location: "Sensor " + a.reading_id, // We'd need to resolve sensor location properly in production
+            value: a.threshold_val, // Assuming value is approx threshold for demo
+            threshold: a.threshold_val,
+            timestamp: new Date(a.created_at).getTime(),
+            status: a.resolved ? "resolved" : "active",
+          }));
+          setAlerts(mappedAlerts);
+        }
+      } catch (err) {
+        console.error("Failed to load initial alerts", err);
       }
-    });
+    }
+    loadAlerts();
   }, []);
 
+  // Initial load of sensors
   useEffect(() => {
     fetchDashboardData("24h")
       .then((data) => {
@@ -164,7 +107,6 @@ export default function AlertsPage() {
             },
           }));
         setSensorReadings(sensors);
-        latestReadingsRef.current = sensors;
         setIsSensorLoading(false);
       })
       .catch(() => {
@@ -172,79 +114,63 @@ export default function AlertsPage() {
       });
   }, []);
 
+  // WebSocket Connection
   useEffect(() => {
-    saveAlerts(alerts);
-    activeKeysRef.current = new Set(
-      alerts
-        .filter((alert) => alert.status === "active")
-        .map((alert) => `${alert.location}::${alert.parameter}`),
-    );
-  }, [alerts]);
+    if (!monitoring) return;
 
-  useEffect(() => {
-    if (!monitoring) {
-      return;
-    }
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    const wsUrl = apiBaseUrl.replace(/^http/, "ws") + "/ws/live";
+    const ws = new WebSocket(wsUrl);
 
-    const timer = setInterval(() => {
-      const previous = latestReadingsRef.current;
-      const next = evolveSensors(previous);
-      const now = Date.now();
-      const newAlerts: AlertItem[] = [];
-
-      for (const sensor of next) {
-        const previousSensor = previous.find((item) => item.id === sensor.id);
-        if (!previousSensor) {
-          continue;
-        }
-
-        for (const parameter of PARAMETER_KEYS) {
-          const threshold = PARAMETER_META[parameter].threshold;
-          const previousValue = previousSensor.values[parameter];
-          const nextValue = sensor.values[parameter];
-          const alertKey = `${sensor.location}::${parameter}`;
-          const crossedAboveThreshold =
-            previousValue <= threshold && nextValue > threshold;
-
-          if (!crossedAboveThreshold || activeKeysRef.current.has(alertKey)) {
-            continue;
-          }
-
-          const id = `alert-${alertCounterRef.current}`;
-          alertCounterRef.current += 1;
-          saveCounter(alertCounterRef.current);
-          activeKeysRef.current.add(alertKey);
-
-          newAlerts.push({
-            id,
-            parameter,
-            location: sensor.location,
-            value: nextValue,
-            threshold,
-            timestamp: now,
-            status: "active",
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "new_reading") {
+          const reading = payload.data;
+          setSensorReadings((current) => {
+            const updated = [...current];
+            const idx = updated.findIndex((s) => s.id === `sensor-${reading.sensor_id}`);
+            if (idx >= 0) {
+              updated[idx].values = {
+                ph: reading.ph,
+                nitrate: reading.nitrates_mg_l,
+                temperature: reading.temperature_c,
+                dissolvedOxygen: reading.dissolved_oxygen_mg_l,
+              };
+            }
+            return updated;
           });
+        } else if (payload.type === "new_alert") {
+          const alertData = payload.data;
+          const newAlert: AlertItem = {
+            id: String(alertData.id),
+            parameter: "nitrate",
+            location: "Sensor " + alertData.reading_id,
+            value: alertData.threshold_val + 0.5, // Just for display
+            threshold: alertData.threshold_val,
+            timestamp: new Date(alertData.created_at).getTime(),
+            status: "active",
+          };
+          setAlerts((current) => [newAlert, ...current]);
+          setNotification({
+            visible: true,
+            alertId: newAlert.id,
+            message: `High nitrate detected`,
+          });
+        } else if (payload.type === "update_alert") {
+          const alertData = payload.data;
+          setAlerts((current) => 
+            current.map((a) => a.id === String(alertData.id) ? { ...a, status: alertData.resolved ? "resolved" : "active" } : a)
+          );
         }
+      } catch (err) {
+        console.error("Error processing websocket message", err);
       }
+    };
 
-      latestReadingsRef.current = next;
-      setSensorReadings(next);
-
-      if (newAlerts.length === 0) {
-        return;
-      }
-
-      const newestAlert = newAlerts[0];
-      setAlerts((current) => [...newAlerts, ...current]);
-      setNotification({
-        visible: true,
-        alertId: newestAlert.id,
-        message: `${PARAMETER_META[newestAlert.parameter].label} is high at ${newestAlert.location}`,
-      });
-      setHighlightedAlertId(newestAlert.id);
-    }, 8000);
-
-    return () => clearInterval(timer);
+    return () => {
+      ws.close();
+    };
   }, [monitoring]);
 
   useEffect(() => {
@@ -259,9 +185,7 @@ export default function AlertsPage() {
     return () => clearTimeout(timeout);
   }, [notification.visible]);
 
-  const activeCount = alerts.length;
-  const [resolvedCount, setResolvedCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
+  const activeCount = alerts.filter(a => a.status === 'active').length;
 
   const handlePopupClick = () => {
     if (!notification.alertId) {
@@ -275,12 +199,25 @@ export default function AlertsPage() {
     panelRef.current?.focus();
   };
 
-  const updateAlertStatus = (id: string, status: Exclude<AlertStatus, "active">) => {
-    setAlerts((current) => current.filter((alert) => alert.id !== id));
-    if (status === "resolved") {
-      setResolvedCount((current) => current + 1);
-    } else {
-      setDismissedCount((current) => current + 1);
+  const updateAlertStatus = async (id: string, status: Exclude<AlertStatus, "active">) => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    try {
+      const resolved = status === "resolved";
+      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts/${id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ resolved })
+      });
+      // The websocket will broadcast the update and update our state
+      if (status === "resolved") {
+        setResolvedCount((current) => current + 1);
+      } else {
+        setDismissedCount((current) => current + 1);
+      }
+    } catch (err) {
+      console.error("Failed to update alert status", err);
     }
   };
 
