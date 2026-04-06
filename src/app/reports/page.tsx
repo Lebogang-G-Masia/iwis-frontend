@@ -3,8 +3,8 @@
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { type CitizenReport, fetchReports } from "@/lib/reports";
 
 const ReportsLocationMap = dynamic(
@@ -31,18 +31,15 @@ function previewDescription(value: string): string {
   return `${value.slice(0, 96).trim()}...`;
 }
 
-export default function ReportsPage() {
+function ReportsContent() {
   const router = useRouter();
-  const [requestedReportId, setRequestedReportId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
   const [reports, setReports] = useState<CitizenReport[]>([]);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setRequestedReportId(params.get("reportId"));
-  }, []);
+  const requestedReportId = searchParams.get("reportId");
 
   useEffect(() => {
     let cancelled = false;
@@ -98,9 +95,8 @@ export default function ReportsPage() {
 
   function handleSelectReport(reportId: string) {
     setSelectedReportId(reportId);
-    setRequestedReportId(reportId);
 
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchParams.toString());
     params.set("reportId", reportId);
     router.replace(`/reports?${params.toString()}`, { scroll: false });
   }
@@ -211,3 +207,12 @@ export default function ReportsPage() {
     </section>
   );
 }
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<p className="state-text">Loading page content...</p>}>
+      <ReportsContent />
+    </Suspense>
+  );
+}
+

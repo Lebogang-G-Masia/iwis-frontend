@@ -120,14 +120,14 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
   
   try {
     // Fetch live data from FastAPI in parallel
-    const [waterRes, weatherRes, sensorsRes] = await Promise.all([
+    const [waterRes, weatherRes, sensorsRes, alertsRes] = await Promise.all([
       fetch(`${baseUrl}/water-readings?limit=24`, { cache: "no-store" }),
       fetch(`${baseUrl}/weather-readings?limit=1`, { cache: "no-store" }),
       fetch(`${baseUrl}/map/sensors`, { cache: "no-store" }),
       fetch(`${baseUrl}/alerts`, { cache: "no-store" }),
     ]);
 
-    if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok) {
+    if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok || !alertsRes.ok) {
       throw new Error("One or more backend requests failed.");
     }
 

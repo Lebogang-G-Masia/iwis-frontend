@@ -297,6 +297,13 @@ body {
   font-weight: 600;
   color: #35516b;
   background: #f2f8fd;
+  cursor: pointer;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.map-tag.is-muted {
+  opacity: 0.5;
+  filter: grayscale(0.8);
 }
 
 .map-tag.is-sensor {

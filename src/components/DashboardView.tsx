@@ -87,6 +87,17 @@ export default function DashboardView() {
     () => buildChartPoints(selectedTrend?.points ?? []),
     [selectedTrend],
   );
+  const [showSensors, setShowSensors] = useState(true);
+  const [showReports, setShowReports] = useState(true);
+
+  const filteredMapPoints = useMemo(() => {
+    return (dashboardData?.mapPoints ?? []).filter((point) => {
+      if (point.type === "sensor") return showSensors;
+      if (point.type === "report") return showReports;
+      return true;
+    });
+  }, [dashboardData, showSensors, showReports]);
+
   const sensorCount =
     dashboardData?.mapPoints.filter((point) => point.type === "sensor").length ??
     0;
@@ -116,7 +127,7 @@ export default function DashboardView() {
           </header>
 
           <GoogleHartbeespoortMap
-            mapPoints={dashboardData?.mapPoints ?? []}
+            mapPoints={filteredMapPoints}
             pollutionHotspots={dashboardData?.pollutionHotspots ?? []}
             onReportMarkerClick={handleReportMarkerClick}
           />
@@ -138,8 +149,22 @@ export default function DashboardView() {
             </div>
 
             <div className="map-tags">
-              <span className="map-tag is-sensor">{sensorCount} Sensor markers</span>
-              <span className="map-tag is-report">{reportCount} Report markers</span>
+              <button
+                type="button"
+                className={`map-tag is-sensor ${!showSensors ? "is-muted" : ""}`}
+                onClick={() => setShowSensors(!showSensors)}
+                title={showSensors ? "Hide sensors" : "Show sensors"}
+              >
+                {sensorCount} Sensor markers
+              </button>
+              <button
+                type="button"
+                className={`map-tag is-report ${!showReports ? "is-muted" : ""}`}
+                onClick={() => setShowReports(!showReports)}
+                title={showReports ? "Hide reports" : "Show reports"}
+              >
+                {reportCount} Report markers
+              </button>
             </div>
           </div>
         </article>
@@ -185,9 +210,14 @@ export default function DashboardView() {
             <aside className="recent-reports-panel">
               <div className="recent-reports-panel__header">
                 <h4 className="panel-title">Recent Reports</h4>
-                <Link href="/reports" className="reports-link-btn">
-                  View all reports
-                </Link>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <Link href="/reports/new" className="reports-page__create-link" style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '999px' }}>
+                    Report Sighting
+                  </Link>
+                  <Link href="/reports" className="reports-link-btn">
+                    View all
+                  </Link>
+                </div>
               </div>
               <ul className="recent-reports-list">
                 {dashboardData?.recentReports.map((report) => (
