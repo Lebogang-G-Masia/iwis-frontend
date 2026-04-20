@@ -90,6 +90,7 @@ interface BackendWaterReading {
   ph: number;
   temperature_c: number;
   nitrates_mg_l: number;
+  phosphate_mg_l: number | null;
   turbidity_ntu: number;
   dissolved_oxygen_mg_l: number;
 }
@@ -106,7 +107,19 @@ interface BackendSensorFeature {
   type: "Feature";
   id: number;
   geometry: { type: "Point"; coordinates: [number, number] };
-  properties: { name: string; sensor_type: string; is_active: boolean };
+  properties: { 
+    name: string; 
+    sensor_type: string; 
+    is_active: boolean;
+    latest_readings?: {
+      ph: number;
+      nitrate: number;
+      phosphate: number | null;
+      temperature: number;
+      dissolvedOxygen: number;
+      turbidity: number;
+    }
+  };
 }
 
 // ---------------------------------------------------------
@@ -120,26 +133,30 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
   
   try {
     // Fetch live data from FastAPI in parallel
-    const [waterRes, weatherRes, sensorsRes, alertsRes] = await Promise.all([
+    const [waterRes, weatherRes, sensorsRes, alertsRes, hotspotsRes, wqiRes] = await Promise.all([
       fetch(`${baseUrl}/water-readings?limit=24`, { cache: "no-store" }),
       fetch(`${baseUrl}/weather-readings?limit=1`, { cache: "no-store" }),
       fetch(`${baseUrl}/map/sensors`, { cache: "no-store" }),
       fetch(`${baseUrl}/alerts`, { cache: "no-store" }),
+      fetch(`${baseUrl}/analysis/hotspots`, { cache: "no-store" }),
+      fetch(`${baseUrl}/analysis/wqi-summary`, { cache: "no-store" }),
     ]);
 
-    if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok || !alertsRes.ok) {
+    if (!waterRes.ok || !weatherRes.ok || !sensorsRes.ok || !alertsRes.ok || !hotspotsRes.ok || !wqiRes.ok) {
       throw new Error("One or more backend requests failed.");
     }
 
     const waterData = (await waterRes.json()) as BackendWaterReading[];
     const weatherData = (await weatherRes.json()) as BackendWeatherReading[];
     const sensorsData = await sensorsRes.json();
+    const hotspotsData = await hotspotsRes.json();
+    const wqiData = await wqiRes.json();
 
     const partialDashboard: Partial<DashboardData> = {};
 
     // 1. Process Latest Water Readings
     if (waterData.length > 0) {
-      const latestWater = waterData[0]; // Assuming descending order from backend
+      const latestWater = waterData[0];
       partialDashboard.currentReadings = {
         ph: latestWater.ph,
         nitrate: latestWater.nitrates_mg_l,
@@ -151,7 +168,7 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
       partialDashboard.trends = {
         nitrate: { unit: "mg/L", points: waterData.map(d => d.nitrates_mg_l).reverse() },
         temperature: { unit: "°C", points: waterData.map(d => d.temperature_c).reverse() },
-        phosphate: { unit: "mg/L", points: [] }, // Backend doesn't have phosphate yet
+        phosphate: { unit: "mg/L", points: waterData.map(d => d.phosphate_mg_l || 0).reverse() },
       };
     }
 
@@ -159,13 +176,13 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
     if (weatherData.length > 0) {
       const latestWeather = weatherData[0];
       partialDashboard.weather = {
-        windSpeed: latestWeather.wind_speed_m_s * 3.6, // convert m/s to km/h
+        windSpeed: Math.round(latestWeather.wind_speed_m_s * 3.6), // convert m/s to km/h
         airTemp: latestWeather.air_temperature_c,
         windDirection: latestWeather.wind_direction_deg,
       };
     }
 
-    // 3. Process Sensor Map Points with Fallback Readings
+    // 3. Process Sensor Map Points with Real Readings from backend
     if (sensorsData && sensorsData.features) {
       partialDashboard.mapPoints = sensorsData.features.map((feature: BackendSensorFeature) => ({
         id: `sensor-${feature.id}`,
@@ -173,8 +190,7 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
         type: "sensor",
         lng: feature.geometry.coordinates[0],
         lat: feature.geometry.coordinates[1],
-        // Provide the global readings to the map popup, or safe defaults if none exist
-        latestReadings: partialDashboard.currentReadings || {
+        latestReadings: feature.properties.latest_readings || partialDashboard.currentReadings || {
           ph: 0,
           nitrate: 0,
           temperature: 0,
@@ -183,17 +199,22 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
       }));
     }
 
+    // 4. Alerts
     const alertsData = await alertsRes.json();
-
     if (alertsData && alertsData.length > 0) {
       partialDashboard.alerts = alertsData.map((alert: any) => ({
         id: `alert-${alert.id}`,
-        title: `${alert.alert_type} (${alert.threshold_val} mg/L limit exceeded)`,
-        severity: "high"
+        title: `${alert.alert_type} (${alert.severity.toUpperCase()})`,
+        severity: alert.severity as "high" | "medium" | "low"
       }));
-    } else {
-      partialDashboard.alerts = []; 
     }
+
+    // 5. Hotspots and WQI
+    partialDashboard.pollutionHotspots = hotspotsData;
+    partialDashboard.indices = {
+      correlation: 0.76, // We keep mock for now or could fetch from /analysis/correlations
+      pollutionHeatmap: wqiData.current_wqi || 0
+    };
 
     return partialDashboard;
 
