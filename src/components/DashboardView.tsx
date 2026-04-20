@@ -11,6 +11,8 @@ import {
   type TrendMetric,
 } from "@/lib/dashboard";
 
+import { useLiveUpdates } from "@/lib/useLiveUpdates";
+
 const windowOptions: Array<{ value: TimeWindow; label: string }> = [
   { value: "24h", label: "Last 24 Hours" },
   { value: "30d", label: "Last 30 Days" },
@@ -27,7 +29,7 @@ function buildChartPoints(values: number[]): string {
     return "";
   }
 
-  const max = Math.max(...values, 1);
+  const max = Math.max(...values, 0.1);
 
   return values
     .map((value, index) => {
@@ -45,6 +47,9 @@ export default function DashboardView() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  
+  const liveUpdate = useLiveUpdates();
+
   const handleReportMarkerClick = useCallback(
     (reportId: string) => {
       router.push(`/reports?reportId=${encodeURIComponent(reportId)}`);
@@ -52,35 +57,31 @@ export default function DashboardView() {
     [router],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadDashboard() {
-      setIsLoading(true);
+  const loadDashboard = useCallback(async () => {
+    try {
+      const data = await fetchDashboardData(timeWindow);
+      setDashboardData(data);
       setLoadError(null);
-
-      try {
-        const data = await fetchDashboardData(timeWindow);
-        if (!cancelled) {
-          setDashboardData(data);
-        }
-      } catch {
-        if (!cancelled) {
-          setLoadError("Dashboard data could not be loaded.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
+    } catch {
+      setLoadError("Dashboard data could not be loaded.");
+    } finally {
+      setIsLoading(false);
     }
-
-    loadDashboard();
-
-    return () => {
-      cancelled = true;
-    };
   }, [timeWindow]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  // Handle live updates
+  useEffect(() => {
+    if (!liveUpdate) return;
+
+    if (liveUpdate.type === "new_reading" || liveUpdate.type === "new_alert" || liveUpdate.type === "update_alert") {
+      // Re-fetch everything to ensure consistent state
+      loadDashboard();
+    }
+  }, [liveUpdate, loadDashboard]);
 
   const selectedTrend = dashboardData?.trends[metric];
   const chartPoints = useMemo(
