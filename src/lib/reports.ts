@@ -22,6 +22,7 @@ interface BackendCitizenReport {
   description: string;
   photo_url: string | null;
   reporter_name: string | null;
+  report_type: string | null;
   status: string;
   latitude: number;
   longitude: number;
@@ -60,7 +61,7 @@ function mapBackendReportToFrontend(backendReport: BackendCitizenReport): Citize
   return {
     id: String(backendReport.id),
     title: extractedTitle,
-    type: "citizen-scientist", // Defaulting as backend doesn't store this yet
+    type: (backendReport.report_type as any) || "citizen-scientist",
     submittedBy: backendReport.reporter_name || "Anonymous",
     description: backendReport.description || "No description provided.",
     photoUrl: backendReport.photo_url || "/report-photo.svg",
