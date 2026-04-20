@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useLiveUpdates } from "@/lib/useLiveUpdates";
 
 interface AnalysisData {
   correlations: Record<string, Record<string, number>>;
@@ -14,56 +15,55 @@ export default function DataAnalysisPage() {
   const [data, setData] = useState<AnalysisData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
+  const liveUpdate = useLiveUpdates();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchAnalysis() {
-      setIsLoading(true);
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  const fetchAnalysis = useCallback(async () => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    
+    let url = `${apiBaseUrl.replace(/\/$/, "")}/analysis/correlations`;
+    const params = new URLSearchParams();
+    
+    if (timeRange !== "all") {
+      const end = new Date();
+      const start = new Date();
+      if (timeRange === "7d") start.setDate(start.getDate() - 7);
+      if (timeRange === "30d") start.setDate(start.getDate() - 30);
       
-      let url = `${apiBaseUrl.replace(/\/$/, "")}/analysis/correlations`;
-      const params = new URLSearchParams();
-      
-      if (timeRange !== "all") {
-        const end = new Date();
-        const start = new Date();
-        if (timeRange === "7d") start.setDate(start.getDate() - 7);
-        if (timeRange === "30d") start.setDate(start.getDate() - 30);
-        
-        params.append("start_date", start.toISOString());
-        params.append("end_date", end.toISOString());
-      }
-      
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-
-      try {
-        const response = await fetch(url);
-        if (response.ok) {
-          const result = await response.json();
-          if (!cancelled) setData(result);
-        } else if (response.status === 404) {
-          if (!cancelled) setData(null);
-        }
-      } catch (error) {
-        console.error("Failed to fetch analysis", error);
-        if (!cancelled) setData(null);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
+      params.append("start_date", start.toISOString());
+      params.append("end_date", end.toISOString());
+    }
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
     }
 
-    fetchAnalysis();
-    
-    // Auto-refresh analysis every 5 minutes
-    const interval = setInterval(fetchAnalysis, 5 * 60 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        setData(result);
+      } else if (response.status === 404) {
+        setData(null);
+      }
+    } catch (error) {
+      console.error("Failed to fetch analysis", error);
+      setData(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [timeRange]);
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetchAnalysis();
+  }, [fetchAnalysis]);
+
+  // Handle live updates
+  useEffect(() => {
+    if (liveUpdate) {
+      fetchAnalysis();
+    }
+  }, [liveUpdate, fetchAnalysis]);
 
   const getCorrelationColor = (value: number) => {
     if (value === 1) return "bg-gray-200 text-gray-400"; // self-correlation
