@@ -73,17 +73,19 @@ export default function GoogleHartbeespoortMap({
   onReportMarkerClick,
 }: GoogleHartbeespoortMapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<import("leaflet").Map | null>(null);
+  const layersRef = useRef<import("leaflet").LayerGroup | null>(null);
 
   useEffect(() => {
     let isDisposed = false;
-    let mapInstance: import("leaflet").Map | null = null;
 
     async function initializeMap() {
       const L = await import("leaflet");
 
-      if (!mapRef.current || isDisposed) {
-        return;
-      }
+      if (!mapRef.current || isDisposed) return;
+
+      // Ensure we don't initialize twice
+      if (mapInstanceRef.current) return;
 
       const map = L.map(mapRef.current, {
         center: MAP_CENTER,
@@ -92,7 +94,7 @@ export default function GoogleHartbeespoortMap({
         maxZoom: 17,
         zoomControl: true,
       });
-      mapInstance = map;
+      mapInstanceRef.current = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -100,63 +102,94 @@ export default function GoogleHartbeespoortMap({
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
 
-      pollutionHotspots.forEach((hotspot) => {
-        const style = hotspotStyles[hotspot.intensity];
-        L.circle([hotspot.lat, hotspot.lng], {
-          radius: hotspot.radiusMeters,
-          color: style.stroke,
-          fillColor: style.fill,
-          fillOpacity: 0.36,
-          weight: 1.2,
-        })
-          .addTo(map)
-          .bindTooltip(`Pollution hotspot (${hotspot.intensity})`);
-      });
-
-      mapPoints.forEach((point) => {
-        const marker = L.circleMarker([point.lat, point.lng], {
-          radius: 8,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: point.type === "sensor" ? "#1f8a47" : "#2b6cb0",
-          fillOpacity: 0.95,
-        }).addTo(map);
-
-        marker.bindTooltip(point.type === "sensor" ? "Sensor" : "Report", {
-          direction: "top",
-          offset: [0, -8],
-        });
-
-        if (point.type === "report" && onReportMarkerClick) {
-          marker.on("click", () => {
-            onReportMarkerClick(point.id);
-          });
-        }
-
-        marker.bindPopup(
-          point.type === "sensor"
-            ? buildSensorPopup(point)
-            : buildReportPopup(point),
-          { maxWidth: 260 },
-        );
-      });
-
-      const allLocations = [
-        ...mapPoints.map((point) => [point.lat, point.lng] as [number, number]),
-        ...pollutionHotspots.map((spot) => [spot.lat, spot.lng] as [number, number]),
-        MAP_CENTER,
-      ];
-
-      map.fitBounds(L.latLngBounds(allLocations).pad(0.12));
+      layersRef.current = L.layerGroup().addTo(map);
+      
+      // Force an initial update
+      updateLayers();
     }
 
     initializeMap();
 
     return () => {
       isDisposed = true;
-      mapInstance?.remove();
+      if (mapInstanceRef.current) {
+        // Attempt to stop animations before removing
+        const map = mapInstanceRef.current;
+        // @ts-ignore - accessing private or less common properties to ensure safety
+        if (map._mapPane) {
+            map.remove();
+        }
+        mapInstanceRef.current = null;
+        layersRef.current = null;
+      }
     };
-  }, [mapPoints, onReportMarkerClick, pollutionHotspots]);
+  }, []);
+
+  // Update layers when props change
+  useEffect(() => {
+    updateLayers();
+  }, [mapPoints, pollutionHotspots, onReportMarkerClick]);
+
+  async function updateLayers() {
+    const L = await import("leaflet");
+    const map = mapInstanceRef.current;
+    const layerGroup = layersRef.current;
+
+    if (!map || !layerGroup) return;
+
+    layerGroup.clearLayers();
+
+    pollutionHotspots.forEach((hotspot) => {
+      const style = hotspotStyles[hotspot.intensity];
+      L.circle([hotspot.lat, hotspot.lng], {
+        radius: hotspot.radiusMeters,
+        color: style.stroke,
+        fillColor: style.fill,
+        fillOpacity: 0.36,
+        weight: 1.2,
+      })
+        .addTo(layerGroup)
+        .bindTooltip(`Pollution hotspot (${hotspot.intensity})`);
+    });
+
+    mapPoints.forEach((point) => {
+      const marker = L.circleMarker([point.lat, point.lng], {
+        radius: 8,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: point.type === "sensor" ? "#1f8a47" : "#2b6cb0",
+        fillOpacity: 0.95,
+      }).addTo(layerGroup);
+
+      marker.bindTooltip(point.type === "sensor" ? "Sensor" : "Report", {
+        direction: "top",
+        offset: [0, -8],
+      });
+
+      if (point.type === "report" && onReportMarkerClick) {
+        marker.on("click", () => {
+          onReportMarkerClick(point.id);
+        });
+      }
+
+      marker.bindPopup(
+        point.type === "sensor"
+          ? buildSensorPopup(point)
+          : buildReportPopup(point),
+        { maxWidth: 260 },
+      );
+    });
+
+    const allLocations = [
+      ...mapPoints.map((point) => [point.lat, point.lng] as [number, number]),
+      ...pollutionHotspots.map((spot) => [spot.lat, spot.lng] as [number, number]),
+      MAP_CENTER,
+    ];
+
+    if (allLocations.length > 0) {
+        map.fitBounds(L.latLngBounds(allLocations).pad(0.12));
+    }
+  }
 
   return (
     <div className="google-map-wrap" role="region" aria-label={title}>
