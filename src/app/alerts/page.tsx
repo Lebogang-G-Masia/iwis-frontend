@@ -47,6 +47,19 @@ function formatTimestamp(timestamp: number | string) {
   });
 }
 
+// ---------------------------------------------------------
+// BACKEND INTERFACES
+// ---------------------------------------------------------
+interface BackendAlert {
+  id: number;
+  reading_id: number;
+  alert_type: string;
+  severity: string;
+  threshold_val: number;
+  created_at: string;
+  resolved: boolean;
+}
+
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [sensorReadings, setSensorReadings] = useState<SensorReading[]>([]);
@@ -71,8 +84,8 @@ export default function AlertsPage() {
       try {
         const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts`, { cache: "no-store" });
         if (response.ok) {
-          const data = await response.json();
-          const mappedAlerts: AlertItem[] = data.map((a: any) => ({
+          const data = (await response.json()) as BackendAlert[];
+          const mappedAlerts: AlertItem[] = data.map((a: BackendAlert) => ({
             id: String(a.id),
             parameter: "nitrate", // Assuming only nitrate alerts for now
             location: "Sensor " + a.reading_id, // We'd need to resolve sensor location properly in production
@@ -92,7 +105,7 @@ export default function AlertsPage() {
 
   // Initial load of sensors
   useEffect(() => {
-    fetchDashboardData("24h")
+    fetchDashboardData()
       .then((data) => {
         const sensors = data.mapPoints
           .filter((point): point is SensorMapPoint => point.type === "sensor")

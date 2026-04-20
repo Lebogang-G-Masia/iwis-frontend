@@ -61,7 +61,7 @@ function mapBackendReportToFrontend(backendReport: BackendCitizenReport): Citize
   return {
     id: String(backendReport.id),
     title: extractedTitle,
-    type: (backendReport.report_type as any) || "citizen-scientist",
+    type: (backendReport.report_type as CitizenReport["type"]) || "citizen-scientist",
     submittedBy: backendReport.reporter_name || "Anonymous",
     description: backendReport.description || "No description provided.",
     photoUrl: backendReport.photo_url || "/report-photo.svg",

@@ -122,10 +122,16 @@ interface BackendSensorFeature {
   };
 }
 
+interface BackendAlert {
+  id: number;
+  alert_type: string;
+  severity: string;
+}
+
 // ---------------------------------------------------------
 // FETCHING LOGIC
 // ---------------------------------------------------------
-async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<DashboardData> | null> {
+async function fetchDashboardFromBackend(): Promise<Partial<DashboardData> | null> {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) return null;
 
@@ -200,9 +206,9 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
     }
 
     // 4. Alerts
-    const alertsData = await alertsRes.json();
+    const alertsData = (await alertsRes.json()) as BackendAlert[];
     if (alertsData && alertsData.length > 0) {
-      partialDashboard.alerts = alertsData.map((alert: any) => ({
+      partialDashboard.alerts = alertsData.map((alert: BackendAlert) => ({
         id: `alert-${alert.id}`,
         title: `${alert.alert_type} (${alert.severity.toUpperCase()})`,
         severity: alert.severity as "high" | "medium" | "low"
@@ -227,7 +233,7 @@ async function fetchDashboardFromBackend(window: TimeWindow): Promise<Partial<Da
 // ---------------------------------------------------------
 // DATA MERGING & MOCKS
 // ---------------------------------------------------------
-function getMockData(window: TimeWindow): DashboardData {
+function getMockData(): DashboardData {
   return {
     locationName: "Hartbeespoort Dam",
     alerts: [{ id: "alert-1", title: "High nitrate levels detected", severity: "high" }],
@@ -247,12 +253,12 @@ function getMockData(window: TimeWindow): DashboardData {
   };
 }
 
-export async function fetchDashboardData(window: TimeWindow): Promise<DashboardData> {
+export async function fetchDashboardData(): Promise<DashboardData> {
   // Get whatever live data we can from the backend
-  const backendData = await fetchDashboardFromBackend(window);
+  const backendData = await fetchDashboardFromBackend();
   
   // Start with mock data, then overwrite it with any live data we successfully fetched
-  const baseData = { ...getMockData(window), ...backendData };
+  const baseData = { ...getMockData(), ...backendData };
 
   try {
     const reports = await fetchReports();

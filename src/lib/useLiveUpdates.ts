@@ -6,7 +6,7 @@ export type LiveUpdateType = "new_reading" | "new_alert" | "update_alert";
 
 export interface LiveUpdateMessage {
   type: LiveUpdateType;
-  data: any;
+  data: unknown;
 }
 
 export function useLiveUpdates() {

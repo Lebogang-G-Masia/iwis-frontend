@@ -59,7 +59,7 @@ export default function DashboardView() {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const data = await fetchDashboardData(timeWindow);
+      const data = await fetchDashboardData();
       setDashboardData(data);
       setLoadError(null);
     } catch {
@@ -67,7 +67,7 @@ export default function DashboardView() {
     } finally {
       setIsLoading(false);
     }
-  }, [timeWindow]);
+  }, []);
 
   useEffect(() => {
     loadDashboard();
