@@ -4,8 +4,9 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { type CitizenReport, fetchReports } from "@/lib/reports";
+import { useLiveUpdates } from "@/lib/useLiveUpdates";
 
 const ReportsLocationMap = dynamic(
   () => import("@/components/ReportsLocationMap"),
@@ -40,38 +41,30 @@ function ReportsContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const requestedReportId = searchParams.get("reportId");
+  const liveUpdate = useLiveUpdates();
+
+  const loadReports = useCallback(async () => {
+    try {
+      const data = await fetchReports();
+      setReports(data);
+      setLoadError(null);
+    } catch {
+      setLoadError("Reports could not be loaded.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadReports() {
-      try {
-        const data = await fetchReports();
-
-        if (!cancelled) {
-          setReports(data);
-          setLoadError(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setLoadError("Reports could not be loaded.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
     loadReports();
+  }, [loadReports]);
 
-    const interval = window.setInterval(loadReports, 30_000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
+  // WebSocket live updates
+  useEffect(() => {
+    if (liveUpdate) {
+      loadReports();
+    }
+  }, [liveUpdate, loadReports]);
 
   useEffect(() => {
     if (reports.length === 0) {
