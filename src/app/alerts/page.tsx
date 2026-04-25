@@ -1,56 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { fetchDashboardData, type SensorMapPoint } from "@/lib/dashboard";
+import { useEffect, useState, useCallback } from "react";
+import { useLiveUpdates } from "@/lib/useLiveUpdates";
 
-type ParameterKey = "ph" | "temperature" | "nitrate" | "dissolvedOxygen";
-type AlertStatus = "active" | "resolved" | "dismissed";
-type SensorReading = {
-  id: string;
-  location: string;
-  values: Record<ParameterKey, number>;
-};
-
-type AlertItem = {
-  id: string;
-  parameter: ParameterKey;
-  location: string;
-  value: number;
-  threshold: number;
-  timestamp: number;
-  status: AlertStatus;
-};
-
-type NotificationState = {
-  visible: boolean;
-  alertId: string | null;
-  message: string;
-};
-
-const PARAMETER_META: Record<
-  ParameterKey,
-  { label: string; unit: string; threshold: number; min: number; max: number }
-> = {
-  ph: { label: "PH", unit: "pH", threshold: 8.5, min: 6.0, max: 10.0 },
-  temperature: { label: "Temperature", unit: "C", threshold: 25.0, min: 15, max: 30 },
-  nitrate: { label: "Nitrate", unit: "mg/L", threshold: 5.0, min: 0.5, max: 15 },
-  dissolvedOxygen: { label: "Dissolved Oxygen", unit: "mg/L", threshold: 12.0, min: 4.0, max: 14.5 },
-};
-
-function formatTimestamp(timestamp: number | string) {
-  return new Date(timestamp).toLocaleString("en-ZA", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-// ---------------------------------------------------------
-// BACKEND INTERFACES
-// ---------------------------------------------------------
-interface BackendAlert {
+interface Alert {
   id: number;
   reading_id: number;
   alert_type: string;
@@ -61,329 +14,137 @@ interface BackendAlert {
 }
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [sensorReadings, setSensorReadings] = useState<SensorReading[]>([]);
-  const [isSensorLoading, setIsSensorLoading] = useState(true);
-  const [notification, setNotification] = useState<NotificationState>({
-    visible: false,
-    alertId: null,
-    message: "",
-  });
-  const [highlightedAlertId, setHighlightedAlertId] = useState<string | null>(null);
-  const [monitoring, setMonitoring] = useState(true);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const liveUpdate = useLiveUpdates();
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  
-  const [resolvedCount, setResolvedCount] = useState(0);
-  const [dismissedCount, setDismissedCount] = useState(0);
-
-  // Initial load of alerts from backend
-  useEffect(() => {
-    async function loadAlerts() {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-      try {
-        const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts`, { cache: "no-store" });
-        if (response.ok) {
-          const data = (await response.json()) as BackendAlert[];
-          const mappedAlerts: AlertItem[] = data.map((a: BackendAlert) => ({
-            id: String(a.id),
-            parameter: "nitrate", // Assuming only nitrate alerts for now
-            location: "Sensor " + a.reading_id, // We'd need to resolve sensor location properly in production
-            value: a.threshold_val, // Assuming value is approx threshold for demo
-            threshold: a.threshold_val,
-            timestamp: new Date(a.created_at).getTime(),
-            status: a.resolved ? "resolved" : "active",
-          }));
-          setAlerts(mappedAlerts);
-        }
-      } catch (err) {
-        console.error("Failed to load initial alerts", err);
-      }
-    }
-    loadAlerts();
-  }, []);
-
-  // Initial load of sensors
-  useEffect(() => {
-    fetchDashboardData()
-      .then((data) => {
-        const sensors = data.mapPoints
-          .filter((point): point is SensorMapPoint => point.type === "sensor")
-          .map((point) => ({
-            id: point.id,
-            location: point.label,
-            values: {
-              ph: point.latestReadings.ph,
-              nitrate: point.latestReadings.nitrate,
-              temperature: point.latestReadings.temperature,
-              dissolvedOxygen: point.latestReadings.dissolvedOxygen,
-            },
-          }));
-        setSensorReadings(sensors);
-        setIsSensorLoading(false);
-      })
-      .catch(() => {
-        setIsSensorLoading(false);
-      });
-  }, []);
-
-  // WebSocket Connection
-  useEffect(() => {
-    if (!monitoring) return;
-
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-    const wsUrl = apiBaseUrl.replace(/^http/, "ws") + "/ws/live";
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === "new_reading") {
-          const reading = payload.data;
-          setSensorReadings((current) => {
-            const updated = [...current];
-            const idx = updated.findIndex((s) => s.id === `sensor-${reading.sensor_id}`);
-            if (idx >= 0) {
-              updated[idx].values = {
-                ph: reading.ph,
-                nitrate: reading.nitrates_mg_l,
-                temperature: reading.temperature_c,
-                dissolvedOxygen: reading.dissolved_oxygen_mg_l,
-              };
-            }
-            return updated;
-          });
-        } else if (payload.type === "new_alert") {
-          const alertData = payload.data;
-          const newAlert: AlertItem = {
-            id: String(alertData.id),
-            parameter: "nitrate",
-            location: "Sensor " + alertData.reading_id,
-            value: alertData.threshold_val + 0.5, // Just for display
-            threshold: alertData.threshold_val,
-            timestamp: new Date(alertData.created_at).getTime(),
-            status: "active",
-          };
-          setAlerts((current) => [newAlert, ...current]);
-          setNotification({
-            visible: true,
-            alertId: newAlert.id,
-            message: `High nitrate detected`,
-          });
-        } else if (payload.type === "update_alert") {
-          const alertData = payload.data;
-          setAlerts((current) => 
-            current.map((a) => a.id === String(alertData.id) ? { ...a, status: alertData.resolved ? "resolved" : "active" } : a)
-          );
-        }
-      } catch (err) {
-        console.error("Error processing websocket message", err);
-      }
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [monitoring]);
-
-  useEffect(() => {
-    if (!notification.visible) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      setNotification((current) => ({ ...current, visible: false }));
-    }, 8000);
-
-    return () => clearTimeout(timeout);
-  }, [notification.visible]);
-
-  const activeCount = alerts.filter(a => a.status === 'active').length;
-
-  const handlePopupClick = () => {
-    if (!notification.alertId) {
-      return;
-    }
-
-    setHighlightedAlertId(notification.alertId);
-    setNotification((current) => ({ ...current, visible: false }));
-    const alertElement = document.getElementById(notification.alertId);
-    alertElement?.scrollIntoView({ behavior: "smooth", block: "center" });
-    panelRef.current?.focus();
-  };
-
-  const updateAlertStatus = async (id: string, status: Exclude<AlertStatus, "active">) => {
+  const fetchAlerts = useCallback(async () => {
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
     try {
-      const resolved = status === "resolved";
-      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts/${id}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ resolved })
-      });
-      // The websocket will broadcast the update and update our state
-      if (status === "resolved") {
-        setResolvedCount((current) => current + 1);
-      } else {
-        setDismissedCount((current) => current + 1);
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts`);
+      if (response.ok) {
+        setAlerts(await response.json());
       }
-    } catch (err) {
-      console.error("Failed to update alert status", err);
+    } catch (error) {
+      console.error("Failed to fetch alerts", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
+
+  // Handle live updates
+  useEffect(() => {
+    if (liveUpdate?.type === "new_alert" || liveUpdate?.type === "update_alert") {
+      fetchAlerts();
+    }
+  }, [liveUpdate, fetchAlerts]);
+
+  const resolveAlert = async (id: number) => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    try {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: true })
+      });
+      if (response.ok) {
+        // Optimistic update
+        setAlerts(current => current.map(a => a.id === id ? { ...a, resolved: true } : a));
+      }
+    } catch (error) {
+      console.error("Failed to resolve alert", error);
+    }
+  };
+
+  const getSeverityStyle = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case 'high': return { borderLeft: '6px solid #c53030', background: '#fff5f5' };
+      case 'medium': return { borderLeft: '6px solid #b7791f', background: '#fffaf0' };
+      default: return { borderLeft: '6px solid #2f855a', background: '#f0fff4' };
     }
   };
 
   return (
-    <section className="page-content alerts-page">
-      <div className="alerts-header-row">
-        <div>
-          <h2 className="page-title">Alerts</h2>
-          <p className="page-description alerts-description">
-            Monitor threshold breaches in real time and respond quickly to high-risk parameters.
-          </p>
-        </div>
-        <button
-          type="button"
-          className={`alerts-monitor-btn ${monitoring ? "is-active" : ""}`}
-          onClick={() => setMonitoring((current) => !current)}
-        >
-          {monitoring ? "Monitoring On" : "Monitoring Paused"}
-        </button>
-      </div>
+    <section className="page-content alerts-page" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
+      <header style={{ marginBottom: '2rem' }}>
+        <h2 className="page-title" style={{ fontSize: '2rem', fontWeight: 'bold' }}>Environmental Alerts</h2>
+        <p style={{ color: '#718096' }}>Real-time monitoring of ecological threshold breaches.</p>
+      </header>
 
-      <div className="alerts-summary-row">
-        <article className="alerts-summary-card">
-          <span>Active</span>
-          <strong>{activeCount}</strong>
-        </article>
-        <article className="alerts-summary-card">
-          <span>Resolved</span>
-          <strong>{resolvedCount}</strong>
-        </article>
-        <article className="alerts-summary-card">
-          <span>Dismissed</span>
-          <strong>{dismissedCount}</strong>
-        </article>
-      </div>
-
-      <div className="alerts-layout">
-        <div className="alerts-main-panel">
-          <div className="alerts-card">
-            <h3>Live Sensor Data</h3>
-            <p>Alerts are generated from these live readings whenever values cross thresholds.</p>
-            {isSensorLoading ? (
-              <p className="alerts-empty">Loading sensor data...</p>
-            ) : (
-              <table className="alerts-threshold-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Location</th>
-                    <th scope="col">pH</th>
-                    <th scope="col">Nitrate</th>
-                    <th scope="col">Temp (C)</th>
-                    <th scope="col">DO (mg/L)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sensorReadings.map((sensor) => (
-                    <tr key={sensor.id}>
-                      <td>{sensor.location}</td>
-                      <td>{sensor.values.ph}</td>
-                      <td>{sensor.values.nitrate}</td>
-                      <td>{sensor.values.temperature}</td>
-                      <td>{sensor.values.dissolvedOxygen}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="alerts-card">
-            <h3>Threshold Configuration</h3>
-            <p>
-              Alerts trigger automatically when a parameter value exceeds its configured threshold.
-            </p>
-            <table className="alerts-threshold-table">
-              <thead>
-                <tr>
-                  <th scope="col">Parameter</th>
-                  <th scope="col">Threshold</th>
-                  <th scope="col">Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(Object.keys(PARAMETER_META) as ParameterKey[]).map((key) => (
-                  <tr key={key}>
-                    <td>{PARAMETER_META[key].label}</td>
-                    <td>{PARAMETER_META[key].threshold}</td>
-                    <td>{PARAMETER_META[key].unit}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <aside className="alerts-panel" ref={panelRef} tabIndex={-1}>
-          <div className="alerts-panel__header">
-            <h3>Alert Panel</h3>
-            <span>{activeCount} active</span>
-          </div>
-
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '4rem' }}>Synchronizing with sensors...</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {alerts.length === 0 ? (
-            <p className="alerts-empty">No alerts triggered yet.</p>
+            <div style={{ textAlign: 'center', padding: '4rem', background: '#f7fafc', borderRadius: '8px', color: '#718096' }}>
+              ✅ All parameters within safe limits. No active alerts.
+            </div>
           ) : (
-            <ul className="alerts-feed" aria-live="polite">
-              {alerts.map((alert) => {
-                const meta = PARAMETER_META[alert.parameter];
-                const isHighlighted = highlightedAlertId === alert.id;
-                return (
-                  <li
-                    key={alert.id}
-                    id={alert.id}
-                    className={`alerts-feed-item status-${alert.status} ${isHighlighted ? "is-highlighted" : ""}`}
+            alerts.map((alert) => (
+              <article 
+                key={alert.id} 
+                style={{ 
+                  padding: '1.5rem', 
+                  background: 'white', 
+                  borderRadius: '8px', 
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  opacity: alert.resolved ? 0.6 : 1,
+                  ...getSeverityStyle(alert.severity)
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      fontWeight: 'bold', 
+                      textTransform: 'uppercase',
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      background: alert.severity === 'high' ? '#fed7d7' : '#feebc8',
+                      color: alert.severity === 'high' ? '#9b2c2c' : '#9c4221'
+                    }}>
+                      {alert.severity} Severity
+                    </span>
+                    <span style={{ color: '#718096', fontSize: '0.875rem' }}>
+                      {new Date(alert.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>{alert.alert_type}</h3>
+                  <p style={{ color: '#4a5568' }}>
+                    Threshold exceeded: <strong>{alert.threshold_val} mg/L</strong>
+                  </p>
+                </div>
+
+                {!alert.resolved ? (
+                  <button 
+                    onClick={() => resolveAlert(alert.id)}
+                    style={{ 
+                      padding: '8px 16px', 
+                      background: '#2b6cb0', 
+                      color: 'white', 
+                      borderRadius: '6px', 
+                      border: 'none', 
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
                   >
-                    <div className="alerts-feed-item__top">
-                      <strong>{meta.label}</strong>
-                      <span className={`alerts-status-chip status-${alert.status}`}>{alert.status}</span>
-                    </div>
-                    <p>
-                      <span>Location:</span> {alert.location}
-                    </p>
-                    <p>
-                      <span>Value:</span> {alert.value} {meta.unit} (threshold {alert.threshold} {meta.unit})
-                    </p>
-                    <p>
-                      <span>Timestamp:</span> {formatTimestamp(alert.timestamp)}
-                    </p>
-
-                    {alert.status === "active" ? (
-                      <div className="alerts-actions">
-                        <button type="button" onClick={() => updateAlertStatus(alert.id, "resolved")}>
-                          Resolve
-                        </button>
-                        <button type="button" onClick={() => updateAlertStatus(alert.id, "dismissed")}>
-                          Dismiss
-                        </button>
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+                    Mark Resolved
+                  </button>
+                ) : (
+                  <span style={{ color: '#2f855a', fontWeight: 'bold' }}>✓ Resolved</span>
+                )}
+              </article>
+            ))
           )}
-        </aside>
-      </div>
-
-      {notification.visible ? (
-        <button type="button" className="alerts-toast" onClick={handlePopupClick}>
-          <strong>New Alert Triggered</strong>
-          <span>{notification.message}</span>
-          <small>Click to open and highlight in the alert panel.</small>
-        </button>
-      ) : null}
+        </div>
+      )}
     </section>
   );
 }
