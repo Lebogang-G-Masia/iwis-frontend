@@ -29,6 +29,7 @@ export default function DataAnalysisPage() {
 
   const fetchAnalysis = useCallback(async () => {
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    console.log(`[IWIS DEBUG] Connecting to Backend at: ${apiBaseUrl}`);
     
     // Fetch correlations
     let corrUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/correlations`;
