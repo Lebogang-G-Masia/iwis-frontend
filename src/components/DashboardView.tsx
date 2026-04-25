@@ -66,7 +66,7 @@ export default function DashboardView() {
       setStats({
         currentWqi: wqiData.current_wqi,
         wqiStatus: wqiData.status,
-        activeAlerts: 0, // Would be fetched from /alerts
+        activeAlerts: 0,
         recentReportsCount: reportPoints.length
       });
       setError(null);
@@ -91,6 +91,12 @@ export default function DashboardView() {
   }, [liveUpdate, fetchDashboardData]);
 
   if (isLoading) return <div className="p-8 text-center">Loading dashboard insights...</div>;
+
+  // Filter and sort reports for the side menu (newest first)
+  const recentReports = mapPoints
+    .filter((p): p is Extract<MapPoint, { type: "report" }> => p.type === 'report')
+    .sort((a, b) => new Date(b.reportedAt!).getTime() - new Date(a.reportedAt!).getTime())
+    .slice(0, 6);
 
   return (
     <section className="dashboard-layout">
@@ -139,15 +145,31 @@ export default function DashboardView() {
       </div>
 
       <aside className="dashboard-side-column">
-        <article className="dashboard-card">
-          <h3 className="dashboard-card-title">Latest Observations</h3>
-          <ul className="recent-reports-list" style={{ listStyle: 'none', padding: 0 }}>
-            {mapPoints.filter(p => p.type === 'report').slice(0, 5).map(report => (
-              <li key={report.id} style={{ padding: '0.75rem 0', borderBottom: '1px solid #edf2f7' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{report.label}</div>
-                <div style={{ fontSize: '0.75rem', color: '#718096' }}>{new Date(report.reportedAt!).toLocaleDateString()}</div>
+        <article className="dashboard-card" style={{ height: '100%', minHeight: '500px' }}>
+          <h3 className="dashboard-card-title" style={{ borderBottom: '2px solid #edf2f7', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+            Latest Observations
+          </h3>
+          <ul className="recent-reports-list" style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {recentReports.length > 0 ? (
+              recentReports.map(report => (
+                <li key={report.id} style={{ padding: '0.5rem 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#2d3748' }}>{report.label}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#a0aec0', whiteSpace: 'nowrap' }}>
+                      {new Date(report.reportedAt!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: '#718096', marginTop: '0.25rem', lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {report.reportSummary}
+                  </p>
+                  <div style={{ borderBottom: '1px solid #f7fafc', marginTop: '0.75rem' }}></div>
+                </li>
+              ))
+            ) : (
+              <li style={{ textAlign: 'center', padding: '2rem', color: '#a0aec0', fontSize: '0.9rem' }}>
+                No sightings reported yet.
               </li>
-            ))}
+            )}
           </ul>
         </article>
       </aside>
