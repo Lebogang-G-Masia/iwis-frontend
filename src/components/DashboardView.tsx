@@ -124,7 +124,7 @@ export default function DashboardView() {
               <div style={{ fontSize: '3rem', fontWeight: 'bold', color: '#2b6cb0' }}>
                 {stats?.currentWqi || "--"}
               </div>
-              <p style={{ textTransform: 'uppercase', tracking: '0.1em', fontSize: '0.75rem', fontWeight: 'bold' }}>
+              <p style={{ textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 Status: <span style={{ color: stats?.wqiStatus === 'Excellent' ? 'green' : '#b7791f' }}>{stats?.wqiStatus || "Unknown"}</span>
               </p>
            </article>
