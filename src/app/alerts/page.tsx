@@ -133,7 +133,7 @@ export default function AlertsPage() {
                 key={alert.id} 
                 style={{ 
                   padding: '1.5rem', 
-                  background: 'white', 
+                  //background: 'white', 
                   borderRadius: '8px', 
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                   display: 'flex',
