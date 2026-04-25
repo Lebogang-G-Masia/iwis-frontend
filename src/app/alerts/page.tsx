@@ -16,10 +16,11 @@ interface Alert {
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSimulating, setIsSimulating] = useState(false);
   const liveUpdate = useLiveUpdates();
 
   const fetchAlerts = useCallback(async () => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
     try {
       const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts`);
       if (response.ok) {
@@ -36,7 +37,6 @@ export default function AlertsPage() {
     fetchAlerts();
   }, [fetchAlerts]);
 
-  // Handle live updates
   useEffect(() => {
     if (liveUpdate?.type === "new_alert" || liveUpdate?.type === "update_alert") {
       fetchAlerts();
@@ -44,19 +44,41 @@ export default function AlertsPage() {
   }, [liveUpdate, fetchAlerts]);
 
   const resolveAlert = async (id: number) => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
     try {
-      const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts/${id}/status`, {
+      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/alerts/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolved: true })
       });
-      if (response.ok) {
-        // Optimistic update
-        setAlerts(current => current.map(a => a.id === id ? { ...a, resolved: true } : a));
-      }
     } catch (error) {
       console.error("Failed to resolve alert", error);
+    }
+  };
+
+  const triggerSimulation = async () => {
+    setIsSimulating(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    try {
+      // Send a high-nitrate reading to trigger the backend alert generator
+      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/water-readings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sensor_id: 1,
+          ph: 7.2,
+          temperature_c: 24.5,
+          nitrates_mg_l: 12.8, // Breach!
+          turbidity_ntu: 5.0,
+          dissolved_oxygen_mg_l: 6.0,
+          latitude: -25.7343,
+          longitude: 27.8587
+        })
+      });
+    } catch (error) {
+      console.error("Simulation failed", error);
+    } finally {
+      setTimeout(() => setIsSimulating(false), 1000);
     }
   };
 
@@ -70,9 +92,31 @@ export default function AlertsPage() {
 
   return (
     <section className="page-content alerts-page" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
-      <header style={{ marginBottom: '2rem' }}>
-        <h2 className="page-title" style={{ fontSize: '2rem', fontWeight: 'bold' }}>Environmental Alerts</h2>
-        <p style={{ color: '#718096' }}>Real-time monitoring of ecological threshold breaches.</p>
+      <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 className="page-title" style={{ fontSize: '2rem', fontWeight: 'bold' }}>Environmental Alerts</h2>
+          <p style={{ color: '#718096' }}>Real-time monitoring of ecological threshold breaches.</p>
+        </div>
+        
+        <div style={{ background: '#ebf8ff', padding: '1rem', borderRadius: '12px', border: '1px solid #bee3f8' }}>
+           <h4 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#2b6cb0', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Testing Tools</h4>
+           <button 
+             onClick={triggerSimulation}
+             disabled={isSimulating}
+             style={{ 
+               padding: '8px 16px', 
+               background: '#2b6cb0', 
+               color: 'white', 
+               borderRadius: '6px', 
+               border: 'none', 
+               cursor: 'pointer',
+               fontWeight: 'bold',
+               fontSize: '0.875rem'
+             }}
+           >
+             {isSimulating ? "Simulating..." : "Trigger Test Breach"}
+           </button>
+        </div>
       </header>
 
       {isLoading ? (
@@ -89,7 +133,7 @@ export default function AlertsPage() {
                 key={alert.id} 
                 style={{ 
                   padding: '1.5rem', 
-                  //background: 'white', 
+                  background: 'white', 
                   borderRadius: '8px', 
                   boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
                   display: 'flex',
