@@ -58,10 +58,12 @@ export default function AlertsPage() {
 
   const triggerSimulation = async () => {
     setIsSimulating(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    const baseUrl = apiBaseUrl.replace(/\/$/, "");
+    
     try {
       // Send a high-nitrate reading to trigger the backend alert generator
-      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/water-readings`, {
+      const res = await fetch(`${baseUrl}/water-readings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -75,6 +77,11 @@ export default function AlertsPage() {
           longitude: 27.8587
         })
       });
+      
+      if (!res.ok) {
+          const errData = await res.json();
+          console.error("Simulation response error:", errData);
+      }
     } catch (error) {
       console.error("Simulation failed", error);
     } finally {
