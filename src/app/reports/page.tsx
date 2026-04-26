@@ -185,9 +185,12 @@ function ReportsContent() {
                       onClick={() => handleSelectReport(report.id)}
                     >
                       <div className="reports-list__meta">
-                        <strong>{report.location.area}</strong>
+                        <strong>{report.title}</strong>
                         <span>{formatReportDate(report.submittedAt)}</span>
                       </div>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase', marginBottom: '4px' }}>
+                        {report.category} • {report.severity} severity
+                      </p>
                       <p>{previewDescription(report.description)}</p>
                     </button>
                   </li>

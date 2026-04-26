@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLiveUpdates } from "@/lib/useLiveUpdates";
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
 interface AnalysisData {
@@ -29,22 +28,21 @@ export default function DataAnalysisPage() {
 
   const fetchAnalysis = useCallback(async () => {
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    console.log(`[IWIS DEBUG] Connecting to Backend at: ${apiBaseUrl}`);
     
     // Fetch correlations
     let corrUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/correlations`;
     const params = new URLSearchParams();
     if (timeRange !== "all") {
-      const end = new Date();
       const start = new Date();
       if (timeRange === "7d") start.setDate(start.getDate() - 7);
       if (timeRange === "30d") start.setDate(start.getDate() - 30);
       params.append("start_date", start.toISOString());
-      params.append("end_date", end.toISOString());
     }
     if (params.toString()) corrUrl += `?${params.toString()}`;
 
     // Fetch trends
-    const trendUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/trends?days=${timeRange === '7d' ? 7 : 30}`;
+    const trendUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/trends`;
 
     try {
       const [corrRes, trendRes] = await Promise.all([
@@ -52,8 +50,14 @@ export default function DataAnalysisPage() {
         fetch(trendUrl)
       ]);
 
-      if (corrRes.ok) setData(await corrRes.json());
-      if (trendRes.ok) setTrends(await trendRes.json());
+      if (corrRes.ok) {
+          const result = await corrRes.json();
+          setData(result);
+      }
+      if (trendRes.ok) {
+          const result = await trendRes.json();
+          setTrends(result);
+      }
       
     } catch (error) {
       console.error("Failed to fetch analysis", error);
@@ -63,7 +67,6 @@ export default function DataAnalysisPage() {
   }, [timeRange]);
 
   useEffect(() => {
-    setIsLoading(true);
     fetchAnalysis();
   }, [fetchAnalysis]);
 
@@ -77,6 +80,9 @@ export default function DataAnalysisPage() {
     if (value < -0.6) return "bg-blue-100 text-blue-800 font-bold";
     return "bg-white text-gray-600";
   };
+
+  // Helper to safely get keys
+  const getSafeKeys = (obj: any) => obj ? Object.keys(obj) : [];
 
   return (
     <section className="page-content analysis-page" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -98,127 +104,81 @@ export default function DataAnalysisPage() {
             <option value="30d">Past Month</option>
             <option value="all">Full History</option>
           </select>
-          <button 
-            onClick={() => fetchAnalysis()}
-            style={{ padding: '0.5rem 1rem', background: '#2b6cb0', color: 'white', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
-          >
-            Refresh Data
-          </button>
         </div>
       </div>
 
       {isLoading ? (
          <div style={{ textAlign: 'center', padding: '4rem' }}>
-            <div className="loading-spinner" style={{ border: '4px solid #f3f3f3', borderTop: '4px solid #3498db', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 2s linear infinite', margin: '0 auto' }}></div>
-            <p style={{ marginTop: '1rem' }}>Syncing with remote sensors...</p>
+            <p>Syncing with remote sensors...</p>
          </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
           {/* Trend Chart Row */}
           <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              📈 Water Quality Index (WQI) Trend
-            </h3>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>📈 WQI Trend</h3>
             <div style={{ height: '300px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trends}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edf2f7" />
-                  <XAxis dataKey="date" stroke="#718096" fontSize={12} tickFormatter={(str) => str.split('-').slice(1).join('/')} />
-                  <YAxis domain={[0, 100]} stroke="#718096" fontSize={12} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="wqi" 
-                    stroke="#3182ce" 
-                    strokeWidth={3} 
-                    dot={{ r: 4, fill: '#3182ce' }}
-                    activeDot={{ r: 6 }} 
-                  />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" tickFormatter={(str) => str.split('-').slice(1).join('/')} />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="wqi" stroke="#3182ce" strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <p style={{ fontSize: '0.875rem', color: '#718096', marginTop: '1rem', textAlign: 'center' }}>
-              WQI represents overall water health. 0 = Critical, 100 = Pristine.
-            </p>
           </article>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem' }}>
-            {/* Correlation Matrix */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
+            {/* Correlation Matrix with Safety Check */}
             <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>Correlation Matrix</h3>
-              {data ? (
+              {data?.correlations ? (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                     <thead>
                       <tr>
-                        <th style={{ padding: '0.5rem', borderBottom: '1px solid #edf2f7' }}></th>
-                        {Object.keys(data.correlations).map(v => (
-                          <th key={v} style={{ padding: '0.5rem', borderBottom: '1px solid #edf2f7', textTransform: 'capitalize', color: '#4a5568' }}>
-                            {v.split('_')[0]}
-                          </th>
+                        <th></th>
+                        {getSafeKeys(data.correlations).map(v => (
+                          <th key={v} style={{ padding: '0.5rem', textTransform: 'capitalize' }}>{v}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.keys(data.correlations).map(rowVar => (
+                      {getSafeKeys(data.correlations).map(rowVar => (
                         <tr key={rowVar}>
-                          <td style={{ padding: '0.5rem', fontWeight: 'bold', color: '#2d3748', textTransform: 'capitalize' }}>
-                            {rowVar.split('_')[0]}
-                          </td>
-                          {Object.keys(data.correlations).map(colVar => {
-                            const val = data.correlations[rowVar][colVar];
-                            return (
-                              <td key={colVar} className={getCorrelationColor(val)} style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #edf2f7' }}>
-                                {val.toFixed(2)}
-                              </td>
-                            );
-                          })}
+                          <td style={{ fontWeight: 'bold', textTransform: 'capitalize' }}>{rowVar}</td>
+                          {getSafeKeys(data.correlations).map(colVar => (
+                            <td key={colVar} className={getCorrelationColor(data.correlations[rowVar][colVar])} style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              {data.correlations[rowVar][colVar].toFixed(2)}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              ) : <p>No correlation data available.</p>}
+              ) : <p>Loading correlation data...</p>}
             </article>
 
-            {/* Basic Statistics */}
+            {/* Statistics with Safety Check */}
             <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>Baseline Statistics</h3>
-              {data ? (
+              {data?.statistics ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  {Object.entries(data.statistics).slice(0, 4).map(([metric, stats]) => (
+                  {getSafeKeys(data.statistics).slice(0, 4).map(metric => (
                     <div key={metric} style={{ padding: '1rem', border: '1px solid #edf2f7', borderRadius: '8px' }}>
-                      <h4 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                        {metric.replace('_', ' ')}
-                      </h4>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <span style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{stats.mean.toFixed(1)}</span>
-                        <span style={{ fontSize: '0.75rem', color: '#a0aec0' }}>avg</span>
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096', marginTop: '0.25rem' }}>
-                        Range: {stats.min.toFixed(1)} - {stats.max.toFixed(1)}
-                      </div>
+                      <h4 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>{metric}</h4>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{data.statistics[metric].mean?.toFixed(1) || "0.0"}</div>
                     </div>
                   ))}
                 </div>
-              ) : <p>No statistics available.</p>}
-              <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#ebf8ff', borderRadius: '8px', fontSize: '0.875rem' }}>
-                <strong>Data Health:</strong> Analysis based on {data?.sample_size || 0} recent observations.
-              </div>
+              ) : <p>Loading statistics...</p>}
             </article>
           </div>
         </div>
       )}
-
-      <style jsx global>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </section>
   );
 }

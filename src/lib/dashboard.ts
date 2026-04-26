@@ -64,6 +64,13 @@ export interface PollutionHotspot {
   radiusMeters: number;
 }
 
+export interface DashboardStats {
+  currentWqi: number;
+  wqiStatus: string;
+  activeAlerts: number;
+  recentReportsCount: number;
+}
+
 export interface DashboardData {
   locationName: string;
   alerts: DashboardAlert[];

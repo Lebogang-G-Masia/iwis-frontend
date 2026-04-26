@@ -7,22 +7,28 @@ export interface ReportLocation {
 export interface CitizenReport {
   id: string;
   title: string;
-  type: "field-worker" | "citizen-scientist" | "admin";
+  type: string;
   submittedBy: string;
   description: string;
   photoUrl: string;
   submittedAt: string;
   location: ReportLocation;
+  category: string;
+  severity: string;
 }
 
-// Added interface to match FastAPI's CitizenReportRead schema
+// Updated interface to match FastAPI's new CitizenReportRead schema
 interface BackendCitizenReport {
   id: number;
   created_at: string;
+  title: string | null;
   description: string;
   photo_url: string | null;
   reporter_name: string | null;
+  reporter_role: string | null;
   report_type: string | null;
+  severity: string | null;
+  category: string | null;
   status: string;
   latitude: number;
   longitude: number;
@@ -38,53 +44,37 @@ const MOCK_REPORTS: CitizenReport[] = [
     photoUrl: "/report-photo.svg",
     submittedAt: "2026-03-08T10:22:00.000Z",
     location: { lat: -25.7468, lng: 27.8438, area: "South Pier" },
-  },
-  {
-    id: "rep-1002",
-    title: "Algae Bloom at Northern Bank",
-    type: "citizen-scientist",
-    submittedBy: "Lerato K.",
-    description: "Dark green algae mats observed drifting toward the boat launch area. Approximate spread: 80 to 120 meters.",
-    photoUrl: "/report-photo.svg",
-    submittedAt: "2026-03-08T14:10:00.000Z",
-    location: { lat: -25.7219, lng: 27.8718, area: "Northern Bank" },
+    category: "pollution",
+    severity: "medium"
   },
 ];
 
 // Translates FastAPI data to Next.js UI data
 function mapBackendReportToFrontend(backendReport: BackendCitizenReport): CitizenReport {
-  // Extract a short title from the description if it exists
-  const extractedTitle = backendReport.description 
-    ? backendReport.description.split('.')[0].slice(0, 40) + (backendReport.description.length > 40 ? "..." : "")
-    : "Citizen Report";
-
   return {
     id: String(backendReport.id),
-    title: extractedTitle,
-    type: (backendReport.report_type as CitizenReport["type"]) || "citizen-scientist",
+    title: backendReport.title || "Environmental Sighting",
+    type: backendReport.reporter_role || "citizen",
     submittedBy: backendReport.reporter_name || "Anonymous",
     description: backendReport.description || "No description provided.",
     photoUrl: backendReport.photo_url || "/report-photo.svg",
     submittedAt: backendReport.created_at,
+    category: backendReport.category || "other",
+    severity: backendReport.severity || "low",
     location: {
       lat: backendReport.latitude,
       lng: backendReport.longitude,
-      area: "Coordinates provided", 
+      area: backendReport.category ? backendReport.category.charAt(0).toUpperCase() + backendReport.category.slice(1) : "General Area", 
     },
   };
 }
 
 async function fetchReportsFromBackend(): Promise<CitizenReport[] | null> {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!apiBaseUrl) {
-    return null;
-  }
-
-  // Updated endpoint to match main.py
-  const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/citizen-reports`;
-
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  const baseUrl = apiBaseUrl.replace(/\/$/, "");
+  
   try {
-    const response = await fetch(endpoint, { cache: "no-store" });
+    const response = await fetch(`${baseUrl}/citizen-reports`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Reports request failed with status ${response.status}`);
     }

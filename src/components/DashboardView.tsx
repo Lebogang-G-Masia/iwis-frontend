@@ -1,311 +1,176 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import GoogleHartbeespoortMap from "@/components/GoogleHartbeespoortMap";
-import {
-  type DashboardData,
-  fetchDashboardData,
-  type TimeWindow,
-  type TrendMetric,
-} from "@/lib/dashboard";
-
+import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useLiveUpdates } from "@/lib/useLiveUpdates";
+import type { MapPoint, PollutionHotspot, DashboardStats } from "@/lib/dashboard";
 
-const windowOptions: Array<{ value: TimeWindow; label: string }> = [
-  { value: "24h", label: "Last 24 Hours" },
-  { value: "30d", label: "Last 30 Days" },
-];
-
-const metricOptions: Array<{ value: TrendMetric; label: string }> = [
-  { value: "nitrate", label: "Nitrate" },
-  { value: "phosphate", label: "Phosphate" },
-  { value: "temperature", label: "Temperature" },
-];
-
-function buildChartPoints(values: number[]): string {
-  if (values.length < 2) {
-    return "";
+// Dynamic import for Leaflet map to avoid SSR issues
+const GoogleHartbeespoortMap = dynamic(
+  () => import("./GoogleHartbeespoortMap"),
+  { 
+    ssr: false,
+    loading: () => <div className="google-map-frame loading-state">Loading satellite data...</div>
   }
-
-  const max = Math.max(...values, 0.1);
-
-  return values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = 100 - (value / max) * 82;
-      return `${x},${y}`;
-    })
-    .join(" ");
-}
+);
 
 export default function DashboardView() {
-  const router = useRouter();
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>("24h");
-  const [metric, setMetric] = useState<TrendMetric>("nitrate");
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [mapPoints, setMapPoints] = useState<MapPoint[]>([]);
+  const [hotspots, setHotspots] = useState<PollutionHotspot[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   const liveUpdate = useLiveUpdates();
 
-  const handleReportMarkerClick = useCallback(
-    (reportId: string) => {
-      router.push(`/reports?reportId=${encodeURIComponent(reportId)}`);
-    },
-    [router],
-  );
-
-  const loadDashboard = useCallback(async () => {
+  const fetchDashboardData = useCallback(async () => {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    
     try {
-      const data = await fetchDashboardData();
-      setDashboardData(data);
-      setLoadError(null);
-    } catch {
-      setLoadError("Dashboard data could not be loaded.");
+      const [sensorsRes, reportsRes, hotspotsRes, wqiRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/map/sensors`),
+        fetch(`${apiBaseUrl}/map/citizen-reports`),
+        fetch(`${apiBaseUrl}/analysis/hotspots`),
+        fetch(`${apiBaseUrl}/analysis/wqi-summary`)
+      ]);
+
+      if (!sensorsRes.ok || !reportsRes.ok) throw new Error("Failed to fetch map data");
+
+      const sensorsData = await sensorsRes.json();
+      const reportsData = await reportsRes.json();
+      const hotspotsData = await hotspotsRes.json();
+      const wqiData = await wqiRes.json();
+
+      // Transform GeoJSON to MapPoints
+      const sensorPoints: MapPoint[] = sensorsData.features.map((f: any) => ({
+        id: `sensor-${f.id}`,
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        type: "sensor",
+        label: f.properties.name,
+        latestReadings: f.properties.latest_readings || { ph: 7, nitrate: 0, temperature: 20, dissolvedOxygen: 8 }
+      }));
+
+      const reportPoints: MapPoint[] = reportsData.features.map((f: any) => ({
+        id: `report-${f.id}`,
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        type: "report",
+        label: f.properties.title || "Environmental Sighting",
+        reportSummary: f.properties.description,
+        reportedAt: f.properties.created_at
+      }));
+
+      setMapPoints([...sensorPoints, ...reportPoints]);
+      setHotspots(hotspotsData);
+      setStats({
+        currentWqi: wqiData.current_wqi,
+        wqiStatus: wqiData.status,
+        activeAlerts: 0,
+        recentReportsCount: reportPoints.length
+      });
+      setError(null);
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+      setError("Unable to sync with live sensors.");
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
-  // Handle live updates
+  // Handle live updates from WebSocket
   useEffect(() => {
-    if (!liveUpdate) return;
-
-    if (liveUpdate.type === "new_reading" || liveUpdate.type === "new_alert" || liveUpdate.type === "update_alert") {
-      // Re-fetch everything to ensure consistent state
-      loadDashboard();
+    if (liveUpdate) {
+      console.log("Live update received, refreshing dashboard...");
+      fetchDashboardData();
     }
-  }, [liveUpdate, loadDashboard]);
+  }, [liveUpdate, fetchDashboardData]);
 
-  const selectedTrend = dashboardData?.trends[metric];
-  const chartPoints = useMemo(
-    () => buildChartPoints(selectedTrend?.points ?? []),
-    [selectedTrend],
-  );
-  const [showSensors, setShowSensors] = useState(true);
-  const [showReports, setShowReports] = useState(true);
+  if (isLoading) return <div className="p-8 text-center">Loading dashboard insights...</div>;
 
-  const filteredMapPoints = useMemo(() => {
-    return (dashboardData?.mapPoints ?? []).filter((point) => {
-      if (point.type === "sensor") return showSensors;
-      if (point.type === "report") return showReports;
-      return true;
-    });
-  }, [dashboardData, showSensors, showReports]);
-
-  const sensorCount =
-    dashboardData?.mapPoints.filter((point) => point.type === "sensor").length ??
-    0;
-  const reportCount =
-    dashboardData?.mapPoints.filter((point) => point.type === "report").length ??
-    0;
+  // Filter and sort reports for the side menu (newest first)
+  const recentReports = mapPoints
+    .filter((p): p is Extract<MapPoint, { type: "report" }> => p.type === 'report')
+    .sort((a, b) => new Date(b.reportedAt!).getTime() - new Date(a.reportedAt!).getTime())
+    .slice(0, 6);
 
   return (
     <section className="dashboard-layout">
       <div className="dashboard-main-column">
         <article className="dashboard-card map-card">
           <header className="dashboard-card-header">
-            <h2 className="dashboard-card-title">{dashboardData?.locationName ?? "Hartbeespoort Dam"}</h2>
-
-            <div className="dashboard-toggle" role="tablist" aria-label="Time window">
-              {windowOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`dashboard-toggle-btn ${timeWindow === option.value ? "is-active" : ""}`}
-                  onClick={() => setTimeWindow(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <h2 className="dashboard-card-title">Hartbeespoort Dam Status</h2>
+            {error && <span style={{ color: '#e53e3e', fontSize: '0.8rem' }}>⚠️ Offline Mode</span>}
           </header>
-
-          <GoogleHartbeespoortMap
-            mapPoints={filteredMapPoints}
-            pollutionHotspots={dashboardData?.pollutionHotspots ?? []}
-            onReportMarkerClick={handleReportMarkerClick}
+          
+          <GoogleHartbeespoortMap 
+            mapPoints={mapPoints} 
+            pollutionHotspots={hotspots} 
           />
 
           <div className="map-footer-row">
-            <div className="map-legend" aria-label="Pollution heatmap legend">
-              <span className="legend-item">
-                <span className="legend-swatch legend-low" />
-                Low
-              </span>
-              <span className="legend-item">
-                <span className="legend-swatch legend-medium" />
-                Medium
-              </span>
-              <span className="legend-item">
-                <span className="legend-swatch legend-high" />
-                High
-              </span>
+            <div className="map-legend">
+              <span className="legend-item"><span className="legend-swatch legend-low"></span>Low Risk</span>
+              <span className="legend-item"><span className="legend-swatch legend-high"></span>High Risk</span>
             </div>
-
             <div className="map-tags">
-              <button
-                type="button"
-                className={`map-tag is-sensor ${!showSensors ? "is-muted" : ""}`}
-                onClick={() => setShowSensors(!showSensors)}
-                title={showSensors ? "Hide sensors" : "Show sensors"}
-              >
-                {sensorCount} Sensor markers
-              </button>
-              <button
-                type="button"
-                className={`map-tag is-report ${!showReports ? "is-muted" : ""}`}
-                onClick={() => setShowReports(!showReports)}
-                title={showReports ? "Hide reports" : "Show reports"}
-              >
-                {reportCount} Report markers
-              </button>
+              <span className="map-tag is-sensor">{mapPoints.filter(p => p.type === 'sensor').length} Sensors</span>
+              <span className="map-tag is-report">{mapPoints.filter(p => p.type === 'report').length} Reports</span>
             </div>
           </div>
         </article>
 
-        <article className="dashboard-card trend-card">
-          <header className="dashboard-card-header">
-            <h3 className="dashboard-card-title">Water Quality Trends</h3>
-            <span className="dashboard-unit">{selectedTrend?.unit ?? "mg/L"}</span>
-          </header>
-
-          <div className="dashboard-toggle" role="tablist" aria-label="Metric tabs">
-            {metricOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`dashboard-toggle-btn ${metric === option.value ? "is-active" : ""}`}
-                onClick={() => setMetric(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="trend-grid">
-            <div className="trend-chart-wrap">
-              {chartPoints ? (
-                <svg className="trend-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <line x1="0" y1="25" x2="100" y2="25" className="trend-grid-line" />
-                  <line x1="0" y1="50" x2="100" y2="50" className="trend-grid-line" />
-                  <line x1="0" y1="75" x2="100" y2="75" className="trend-grid-line" />
-                  <polyline points={chartPoints} className="trend-line" />
-                </svg>
-              ) : (
-                <div className="state-text">No trend data</div>
-              )}
-
-              <div className="trend-axis">
-                <span>0 {selectedTrend?.unit ?? ""}</span>
-                <span>Time</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+           <article className="dashboard-card">
+              <h3 className="dashboard-card-title">Water Quality Index</h3>
+              <div style={{ fontSize: '3rem', fontWeight: 'bold', color: '#2b6cb0' }}>
+                {stats?.currentWqi || "--"}
               </div>
-            </div>
-
-            <aside className="recent-reports-panel">
-              <div className="recent-reports-panel__header">
-                <h4 className="panel-title">Recent Reports</h4>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <Link href="/reports/new" className="reports-page__create-link" style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '999px' }}>
-                    Report Sighting
-                  </Link>
-                  <Link href="/reports" className="reports-link-btn">
-                    View all
-                  </Link>
-                </div>
+              <p style={{ textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                Status: <span style={{ color: stats?.wqiStatus === 'Excellent' ? 'green' : '#b7791f' }}>{stats?.wqiStatus || "Unknown"}</span>
+              </p>
+           </article>
+           <article className="dashboard-card">
+              <h3 className="dashboard-card-title">Community Activity</h3>
+              <div style={{ fontSize: '3rem', fontWeight: 'bold', color: '#2d3748' }}>
+                {stats?.recentReportsCount || 0}
               </div>
-              <ul className="recent-reports-list">
-                {dashboardData?.recentReports.map((report) => (
-                  <li key={report.id} className="recent-report-item">
-                    <h5>
-                      <Link href={`/reports?reportId=${encodeURIComponent(report.id)}`}>
-                        {report.title}
-                      </Link>
-                    </h5>
-                    <p>{report.summary}</p>
-                  </li>
-                ))}
-              </ul>
-            </aside>
-          </div>
-        </article>
-
-        <article className="dashboard-card analysis-strip">
-          <div className="analysis-item">
-            <span className="analysis-label">Correlation Analysis</span>
-            <strong>{dashboardData ? Math.round(dashboardData.indices.correlation * 100) : 0}%</strong>
-          </div>
-          <div className="analysis-item">
-            <span className="analysis-label">Pollution Heatmap</span>
-            <strong>{dashboardData?.indices.pollutionHeatmap ?? 0}</strong>
-          </div>
-        </article>
+              <p style={{ fontSize: '0.75rem', color: '#718096' }}>Active reports in current area</p>
+           </article>
+        </div>
       </div>
 
       <aside className="dashboard-side-column">
-        <article className="dashboard-card">
-          <h3 className="dashboard-card-title">Alerts</h3>
-          <ul className="alerts-list">
-            {dashboardData?.alerts.map((alert) => (
-              <li key={alert.id} className={`alert-item severity-${alert.severity}`}>
-                {alert.title}
+        <article className="dashboard-card" style={{ height: '100%', minHeight: '500px' }}>
+          <h3 className="dashboard-card-title" style={{ borderBottom: '2px solid #edf2f7', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+            Latest Observations
+          </h3>
+          <ul className="recent-reports-list" style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {recentReports.length > 0 ? (
+              recentReports.map(report => (
+                <li key={report.id} style={{ padding: '0.5rem 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#2d3748' }}>{report.label}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#a0aec0', whiteSpace: 'nowrap' }}>
+                      {new Date(report.reportedAt!).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: '#718096', marginTop: '0.25rem', lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {report.reportSummary}
+                  </p>
+                  <div style={{ borderBottom: '1px solid #f7fafc', marginTop: '0.75rem' }}></div>
+                </li>
+              ))
+            ) : (
+              <li style={{ textAlign: 'center', padding: '2rem', color: '#a0aec0', fontSize: '0.9rem' }}>
+                No sightings reported yet.
               </li>
-            ))}
+            )}
           </ul>
-        </article>
-
-        <article className="dashboard-card">
-          <h3 className="dashboard-card-title">Current Readings</h3>
-          <div className="readings-grid">
-            <div className="reading-box">
-              <span>pH</span>
-              <strong>{dashboardData?.currentReadings.ph ?? "--"}</strong>
-            </div>
-            <div className="reading-box">
-              <span>Nitrate</span>
-              <strong>{dashboardData?.currentReadings.nitrate ?? "--"} mg/L</strong>
-            </div>
-            <div className="reading-box">
-              <span>Temperature</span>
-              <strong>{dashboardData?.currentReadings.temperature ?? "--"} °C</strong>
-            </div>
-            <div className="reading-box">
-              <span>Dissolved O2</span>
-              <strong>{dashboardData?.currentReadings.dissolvedOxygen ?? "--"} mg/L</strong>
-            </div>
-          </div>
-        </article>
-
-        <article className="dashboard-card">
-          <h3 className="dashboard-card-title">Weather Conditions</h3>
-          <div className="weather-list">
-            <div className="weather-row">
-              <span>Wind Speed</span>
-              <strong>{dashboardData?.weather.windSpeed ?? "--"} km/h</strong>
-            </div>
-            <div className="weather-row">
-              <span>Air Temp</span>
-              <strong>{dashboardData?.weather.airTemp ?? "--"} °C</strong>
-            </div>
-            <div className="weather-row">
-              <span>Wind Direction</span>
-              <strong>{dashboardData?.weather.windDirection ?? "--"}</strong>
-            </div>
-          </div>
-        </article>
-
-        <article className="dashboard-card state-card">
-          {isLoading && <p className="state-text">Loading dashboard data...</p>}
-          {!isLoading && loadError && <p className="state-text is-error">{loadError}</p>}
-          {!isLoading && !loadError && (
-            <p className="state-text">Connected. Showing latest readings.</p>
-          )}
         </article>
       </aside>
     </section>
