@@ -127,7 +127,7 @@ function ReportsContent() {
           <article className="reports-card reports-map-card">
             <div className="reports-card__title-row">
               <h3>Map of Report Locations</h3>
-              <span>{reports.length} reports</span>
+              <span>{reports.length} reports total</span>
             </div>
 
             <div className="reports-map" role="region" aria-label="Reports map with markers">
@@ -139,7 +139,7 @@ function ReportsContent() {
             </div>
           </article>
 
-          <article className="reports-card reports-detail-card">
+          <article className="reports-card reports-detail-card" style={{ maxHeight: '800px', overflowY: 'auto' }}>
             <h3>Full Report Details</h3>
             {selectedReport ? (
               <div className="report-detail">
@@ -148,22 +148,51 @@ function ReportsContent() {
                   alt={selectedReport.title}
                   width={800}
                   height={450}
+                  style={{ borderRadius: '8px', marginBottom: '1rem' }}
                 />
-                <div>
-                  <h4>{selectedReport.title}</h4>
-                  <p>
-                    <strong>Submitted:</strong> {formatReportDate(selectedReport.submittedAt)}
-                  </p>
-                  <p>
-                    <strong>Location:</strong> {selectedReport.location.area}
-                  </p>
-                  <p>
-                    <strong>Submitted by:</strong> {selectedReport.submittedBy}
-                  </p>
-                  <p>
-                    <strong>Report type:</strong> {selectedReport.type}
-                  </p>
-                  <p>{selectedReport.description}</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '1.25rem' }}>{selectedReport.title}</h4>
+                    <span style={{ 
+                      fontSize: '0.7rem', 
+                      padding: '2px 8px', 
+                      borderRadius: '4px', 
+                      background: selectedReport.severity === 'high' ? '#fed7d7' : '#feebc8',
+                      color: selectedReport.severity === 'high' ? '#9b2c2c' : '#9c4221',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase'
+                    }}>
+                      {selectedReport.severity} Priority
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.875rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px' }}>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Reporter</p>
+                      <p style={{ margin: 0, fontWeight: 600 }}>{selectedReport.submittedBy}</p>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#718096' }}>{selectedReport.type.toUpperCase()}</p>
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Category</p>
+                      <p style={{ margin: 0, fontWeight: 600 }}>{selectedReport.category.toUpperCase()}</p>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#718096' }}>{selectedReport.location.area}</p>
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Timestamp</p>
+                      <p style={{ margin: 0, fontWeight: 600 }}>{formatReportDate(selectedReport.submittedAt)}</p>
+                    </div>
+                    <div>
+                      <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Geodata</p>
+                      <p style={{ margin: 0, fontWeight: 600, fontFamily: 'monospace' }}>
+                        {selectedReport.location.lat.toFixed(5)}, {selectedReport.location.lng.toFixed(5)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Observation</p>
+                    <p style={{ margin: 0, lineHeight: 1.6, color: '#1e293b' }}>{selectedReport.description}</p>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -183,15 +212,21 @@ function ReportsContent() {
                       type="button"
                       className={`reports-list__item ${isSelected ? "is-selected" : ""}`}
                       onClick={() => handleSelectReport(report.id)}
+                      style={{ padding: '1rem' }}
                     >
-                      <div className="reports-list__meta">
-                        <strong>{report.title}</strong>
-                        <span>{formatReportDate(report.submittedAt)}</span>
+                      <div className="reports-list__meta" style={{ marginBottom: '0.5rem' }}>
+                        <strong style={{ fontSize: '1rem' }}>{report.title}</strong>
+                        <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{formatReportDate(report.submittedAt)}</span>
                       </div>
-                      <p style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#2b6cb0', textTransform: 'uppercase', marginBottom: '4px' }}>
-                        {report.category} • {report.severity} severity
-                      </p>
-                      <p>{previewDescription(report.description)}</p>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '3px', background: '#e2e8f0', color: '#475569', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                          {report.category}
+                        </span>
+                        <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '3px', background: report.severity === 'high' ? '#fed7d7' : '#edf2f7', color: report.severity === 'high' ? '#9b2c2c' : '#475569', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                          {report.severity} Priority
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569', lineHeight: 1.4 }}>{previewDescription(report.description)}</p>
                     </button>
                   </li>
                 );
@@ -211,4 +246,3 @@ export default function ReportsPage() {
     </Suspense>
   );
 }
-
