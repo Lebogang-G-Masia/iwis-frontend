@@ -53,7 +53,6 @@ export default function AlertsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolved: true })
       });
-      // Optimistic update
       setAlerts(curr => curr.map(a => a.id === id ? { ...a, resolved: true } : a));
     } catch (error) {
       console.error("Failed to resolve alert", error);
@@ -81,124 +80,103 @@ export default function AlertsPage() {
     }
   };
 
-  const stats = useMemo(() => ({
-    active: alerts.filter(a => !a.resolved).length,
-    resolved: alerts.filter(a => a.resolved).length,
-    critical: alerts.filter(a => a.severity === 'high' && !a.resolved).length
-  }), [alerts]);
+  const activeCount = useMemo(() => alerts.filter(a => !a.resolved).length, [alerts]);
 
   return (
-    <div className="alerts-management-system" style={{ padding: '2.5rem', maxWidth: '1280px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="alerts-management-system" style={{ padding: '2.5rem', maxWidth: '1100px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Top Professional Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem' }}>
+      {/* Refined Header without Cards */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '2rem' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-             <span style={{ padding: '4px 10px', background: '#e2e8f0', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800, color: '#475569' }}>v4.0 STABLE</span>
-             <h2 style={{ fontSize: '2.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>Incident Response</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+             <h2 style={{ fontSize: '2.25rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>Incident Response</h2>
+             {activeCount > 0 && (
+               <span style={{ padding: '4px 12px', background: '#ef4444', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 800, color: 'white' }}>
+                 {activeCount} ACTIVE
+               </span>
+             )}
           </div>
-          <p style={{ color: '#64748b', fontSize: '1.1rem', fontWeight: 400 }}>Real-time telemetry monitoring and threshold breach management.</p>
+          <p style={{ color: '#64748b', fontSize: '1rem' }}>Monitoring system telemetry and automated safety thresholds.</p>
         </div>
 
-        {/* Simulation Control */}
-        <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
-           <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.1em' }}>Diagnostics</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
            <button 
              onClick={triggerSimulation}
              disabled={isSimulating}
              style={{ 
-               padding: '10px 20px', 
-               background: isSimulating ? '#cbd5e1' : '#3b82f6', 
-               color: 'white', 
+               padding: '10px 18px', 
+               background: isSimulating ? '#f1f5f9' : 'white', 
+               color: isSimulating ? '#94a3b8' : '#0f172a', 
                borderRadius: '10px', 
-               border: 'none', 
+               border: '1px solid #e2e8f0', 
                cursor: isSimulating ? 'not-allowed' : 'pointer',
-               fontWeight: 700,
+               fontWeight: 600,
                fontSize: '0.875rem',
-               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+               boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
              }}
            >
-             {isSimulating ? "Transmitting..." : "🚀 Trigger Test Breach"}
+             {isSimulating ? "Transmitting..." : "Manual Test Breach"}
            </button>
         </div>
       </header>
 
-      {/* Analytics Snapshot */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
-         <div style={{ background: '#0f172a', padding: '1.5rem', borderRadius: '16px', color: 'white' }}>
-            <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Active Incidents</div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 800 }}>{stats.active}</div>
-         </div>
-         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-            <div style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.5rem' }}>Resolved (24h)</div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a' }}>{stats.resolved}</div>
-         </div>
-         <div style={{ background: stats.critical > 0 ? '#fee2e2' : '#f0fdf4', padding: '1.5rem', borderRadius: '16px', border: stats.critical > 0 ? '1px solid #fecaca' : '1px solid #dcfce7' }}>
-            <div style={{ color: stats.critical > 0 ? '#991b1b' : '#166534', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.5rem' }}>System Status</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: stats.critical > 0 ? '#991b1b' : '#166534' }}>
-               {stats.critical > 0 ? `⚠️ ${stats.critical} CRITICAL BREACHES` : "✓ NOMINAL OPERATION"}
-            </div>
-         </div>
-      </div>
-
-      {/* Main Alert Feed */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Primary Incident Feed */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '10rem', color: '#64748b' }}>Establishing secure WebSocket link...</div>
+          <div style={{ textAlign: 'center', padding: '8rem', color: '#94a3b8' }}>Establishing telemetry link...</div>
         ) : alerts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '10rem', background: '#f8fafc', borderRadius: '24px', border: '2px dashed #e2e8f0' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🍃</div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>All Clear</h3>
-            <p style={{ color: '#64748b' }}>No ecological breaches detected across monitored basins.</p>
+          <div style={{ textAlign: 'center', padding: '8rem', background: '#f8fafc', borderRadius: '24px', border: '1px solid #f1f5f9' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🛡️</div>
+            <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a' }}>System Healthy</h3>
+            <p style={{ color: '#64748b' }}>No active incidents or threshold breaches reported.</p>
           </div>
         ) : (
           alerts.map((alert) => (
             <article 
               key={alert.id} 
               style={{ 
-                padding: '1.75rem', 
-                background: alert.resolved ? '#f8fafc' : 'white', 
-                borderRadius: '20px', 
-                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05)',
+                padding: '2rem', 
+                background: alert.resolved ? '#fdfdfd' : 'white', 
+                borderRadius: '16px', 
+                boxShadow: alert.resolved ? 'none' : '0 10px 15px -3px rgba(0,0,0,0.04)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                border: alert.resolved ? '1px solid #e2e8f0' : `1px solid ${alert.severity === 'high' ? '#fecaca' : '#fed7aa'}`,
-                borderLeft: `8px solid ${alert.resolved ? '#94a3b8' : (alert.severity === 'high' ? '#ef4444' : '#f59e0b')}`,
-                transition: 'transform 0.2s ease',
-                position: 'relative',
-                overflow: 'hidden'
+                border: '1px solid #f1f5f9',
+                borderLeft: `6px solid ${alert.resolved ? '#cbd5e1' : (alert.severity === 'high' ? '#ef4444' : '#f59e0b')}`,
+                opacity: alert.resolved ? 0.7 : 1,
+                transition: 'all 0.2s ease'
               }}
             >
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                   <span style={{ 
                     fontSize: '0.65rem', 
-                    fontWeight: 900, 
+                    fontWeight: 800, 
                     textTransform: 'uppercase',
-                    padding: '4px 12px',
-                    borderRadius: '999px',
-                    background: alert.resolved ? '#e2e8f0' : (alert.severity === 'high' ? '#ef4444' : '#f59e0b'),
-                    color: alert.resolved ? '#475569' : 'white',
-                    letterSpacing: '0.05em'
+                    padding: '2px 10px',
+                    borderRadius: '4px',
+                    background: alert.resolved ? '#f1f5f9' : (alert.severity === 'high' ? '#fee2e2' : '#fef3c7'),
+                    color: alert.resolved ? '#64748b' : (alert.severity === 'high' ? '#991b1b' : '#92400e'),
+                    letterSpacing: '0.025em'
                   }}>
-                    {alert.severity} Priority
+                    {alert.severity} PRIORITY
                   </span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: 500 }}>
-                    Log ID: #{alert.id} • Sensor Link: {alert.reading_id}
+                  <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>
+                    INCIDENT #{alert.id}
                   </span>
                 </div>
                 
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: alert.resolved ? '#64748b' : '#0f172a', marginBottom: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
                    {alert.alert_type}
                 </h3>
                 
-                <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-                   <div style={{ color: '#475569', fontSize: '0.9rem' }}>
-                      Detection Value: <strong style={{ color: alert.resolved ? '#64748b' : '#0f172a' }}>{alert.threshold_val.toFixed(2)} mg/L</strong>
+                <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center' }}>
+                   <div style={{ color: '#475569', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#94a3b8' }}>Detection:</span> <strong>{alert.threshold_val.toFixed(2)} mg/L</strong>
                    </div>
-                   <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                      Timestamp: {new Date(alert.created_at).toLocaleString()}
+                   <div style={{ color: '#475569', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#94a3b8' }}>Timestamp:</span> <span>{new Date(alert.created_at).toLocaleString()}</span>
                    </div>
                 </div>
               </div>
@@ -208,30 +186,23 @@ export default function AlertsPage() {
                   <button 
                     onClick={() => resolveAlert(alert.id)}
                     style={{ 
-                      padding: '12px 28px', 
-                      background: 'white', 
-                      color: '#0f172a', 
-                      borderRadius: '12px', 
-                      border: '2px solid #0f172a', 
+                      padding: '12px 24px', 
+                      background: '#0f172a', 
+                      color: 'white', 
+                      borderRadius: '10px', 
+                      border: 'none', 
                       cursor: 'pointer',
-                      fontWeight: 800,
-                      fontSize: '0.9rem',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                       e.currentTarget.style.background = '#0f172a';
-                       e.currentTarget.style.color = 'white';
-                    }}
-                    onMouseLeave={(e) => {
-                       e.currentTarget.style.background = 'white';
-                       e.currentTarget.style.color = '#0f172a';
+                      fontWeight: 700,
+                      fontSize: '0.875rem',
+                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
                     }}
                   >
-                    Acknowledge & Resolve
+                    Resolve Incident
                   </button>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 800 }}>
-                    <span style={{ fontSize: '1.25rem' }}>✓</span> Case Closed
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, fontSize: '0.875rem' }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
+                    RESOLVED
                   </div>
                 )}
               </div>
@@ -241,9 +212,8 @@ export default function AlertsPage() {
       </div>
 
       <style jsx global>{`
-        .alerts-management-system button:active {
-          transform: scale(0.96);
-        }
+        button:hover { filter: brightness(1.1); }
+        button:active { transform: scale(0.98); }
       `}</style>
     </div>
   );
