@@ -83,138 +83,113 @@ export default function AlertsPage() {
   const activeCount = useMemo(() => alerts.filter(a => !a.resolved).length, [alerts]);
 
   return (
-    <div className="alerts-management-system" style={{ padding: '2.5rem', maxWidth: '1100px', margin: '0 auto', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', color: '#1a202c', fontFamily: 'monospace', backgroundColor: '#ffffff' }}>
       
-      {/* Refined Header without Cards */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '2rem' }}>
+      {/* Tabular Header Section */}
+      <header style={{ borderBottom: '2px solid #2d3748', paddingBottom: '1rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-             <h2 style={{ fontSize: '2.25rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>Incident Response</h2>
-             {activeCount > 0 && (
-               <span style={{ padding: '4px 12px', background: '#ef4444', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 800, color: 'white' }}>
-                 {activeCount} ACTIVE
-               </span>
-             )}
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', textTransform: 'uppercase', margin: 0 }}>
+            SYSTEM_INCIDENT_LOG
+          </h2>
+          <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#4a5568' }}>
+            ACTIVE_INCIDENTS: {activeCount} | TELEMETRY: CONNECTED
           </div>
-          <p style={{ color: '#64748b', fontSize: '1rem' }}>Monitoring system telemetry and automated safety thresholds.</p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-           <button 
-             onClick={triggerSimulation}
-             disabled={isSimulating}
-             style={{ 
-               padding: '10px 18px', 
-               background: isSimulating ? '#f1f5f9' : 'white', 
-               color: isSimulating ? '#94a3b8' : '#0f172a', 
-               borderRadius: '10px', 
-               border: '1px solid #e2e8f0', 
-               cursor: isSimulating ? 'not-allowed' : 'pointer',
-               fontWeight: 600,
-               fontSize: '0.875rem',
-               boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-             }}
-           >
-             {isSimulating ? "Transmitting..." : "Manual Test Breach"}
-           </button>
-        </div>
+        <button 
+          onClick={triggerSimulation}
+          disabled={isSimulating}
+          style={{ 
+            padding: '6px 12px', 
+            background: 'none',
+            border: '1px solid #cbd5e0',
+            cursor: 'pointer',
+            fontSize: '0.75rem',
+            color: '#4a5568',
+            fontFamily: 'monospace'
+          }}
+        >
+          {isSimulating ? ">> EXECUTING..." : ">> TRIGGER_TEST_SIM"}
+        </button>
       </header>
 
-      {/* Primary Incident Feed */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* High Density Data Table */}
+      <div style={{ width: '100%' }}>
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '8rem', color: '#94a3b8' }}>Establishing telemetry link...</div>
-        ) : alerts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '8rem', background: '#f8fafc', borderRadius: '24px', border: '1px solid #f1f5f9' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🛡️</div>
-            <h3 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a' }}>System Healthy</h3>
-            <p style={{ color: '#64748b' }}>No active incidents or threshold breaches reported.</p>
-          </div>
+          <div style={{ padding: '2rem 0' }}>INITIALIZING_DATABASE_LINK...</div>
         ) : (
-          alerts.map((alert) => (
-            <article 
-              key={alert.id} 
-              style={{ 
-                padding: '2rem', 
-                background: alert.resolved ? '#fdfdfd' : 'white', 
-                borderRadius: '16px', 
-                boxShadow: alert.resolved ? 'none' : '0 10px 15px -3px rgba(0,0,0,0.04)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                border: '1px solid #f1f5f9',
-                borderLeft: `6px solid ${alert.resolved ? '#cbd5e1' : (alert.severity === 'high' ? '#ef4444' : '#f59e0b')}`,
-                opacity: alert.resolved ? 0.7 : 1,
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-                  <span style={{ 
-                    fontSize: '0.65rem', 
-                    fontWeight: 800, 
-                    textTransform: 'uppercase',
-                    padding: '2px 10px',
-                    borderRadius: '4px',
-                    background: alert.resolved ? '#f1f5f9' : (alert.severity === 'high' ? '#fee2e2' : '#fef3c7'),
-                    color: alert.resolved ? '#64748b' : (alert.severity === 'high' ? '#991b1b' : '#92400e'),
-                    letterSpacing: '0.025em'
-                  }}>
-                    {alert.severity} PRIORITY
-                  </span>
-                  <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600 }}>
-                    INCIDENT #{alert.id}
-                  </span>
-                </div>
-                
-                <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>
-                   {alert.alert_type}
-                </h3>
-                
-                <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center' }}>
-                   <div style={{ color: '#475569', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ color: '#94a3b8' }}>Detection:</span> <strong>{alert.threshold_val.toFixed(2)} mg/L</strong>
-                   </div>
-                   <div style={{ color: '#475569', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ color: '#94a3b8' }}>Timestamp:</span> <span>{new Date(alert.created_at).toLocaleString()}</span>
-                   </div>
-                </div>
-              </div>
-
-              <div style={{ marginLeft: '2rem' }}>
-                {!alert.resolved ? (
-                  <button 
-                    onClick={() => resolveAlert(alert.id)}
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #2d3748', color: '#2d3748' }}>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>ID</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>PRIORITY</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>INCIDENT_TYPE</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>VALUE</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>TIMESTAMP</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alerts.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: '4rem 0', textAlign: 'center', color: '#a0aec0' }}>
+                    -- NO_RECORDS_TO_DISPLAY --
+                  </td>
+                </tr>
+              ) : (
+                alerts.map((alert) => (
+                  <tr 
+                    key={alert.id} 
                     style={{ 
-                      padding: '12px 24px', 
-                      background: '#0f172a', 
-                      color: 'white', 
-                      borderRadius: '10px', 
-                      border: 'none', 
-                      cursor: 'pointer',
-                      fontWeight: 700,
-                      fontSize: '0.875rem',
-                      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                      borderBottom: '1px solid #e2e8f0',
+                      color: alert.resolved ? '#a0aec0' : '#1a202c',
+                      backgroundColor: !alert.resolved && alert.severity === 'high' ? '#fff5f5' : 'transparent'
                     }}
                   >
-                    Resolve Incident
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, fontSize: '0.875rem' }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
-                    RESOLVED
-                  </div>
-                )}
-              </div>
-            </article>
-          ))
+                    <td style={{ padding: '12px 8px' }}>#{alert.id.toString().padStart(4, '0')}</td>
+                    <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>
+                      <span style={{ color: alert.resolved ? '#a0aec0' : (alert.severity === 'high' ? '#e53e3e' : '#d69e2e') }}>
+                        {alert.severity.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 8px' }}>{alert.alert_type.toUpperCase()}</td>
+                    <td style={{ padding: '12px 8px' }}>
+                       {alert.threshold_val.toFixed(2)} MG/L
+                    </td>
+                    <td style={{ padding: '12px 8px' }}>
+                       {new Date(alert.created_at).toISOString().replace('T', ' ').split('.')[0]}
+                    </td>
+                    <td style={{ padding: '12px 8px' }}>
+                      {!alert.resolved ? (
+                        <button 
+                          onClick={() => resolveAlert(alert.id)}
+                          style={{ 
+                            padding: '2px 8px', 
+                            background: '#2d3748', 
+                            color: 'white', 
+                            border: 'none', 
+                            cursor: 'pointer',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace'
+                          }}
+                        >
+                          ACK_RESOLVE
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem' }}>[ RESOLVED ]</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
       </div>
 
-      <style jsx global>{`
-        button:hover { filter: brightness(1.1); }
-        button:active { transform: scale(0.98); }
-      `}</style>
+      <footer style={{ marginTop: '4rem', fontSize: '0.7rem', color: '#a0aec0', borderTop: '1px dashed #cbd5e0', paddingTop: '1rem' }}>
+        SYSTEM_ORIGIN: LIVE_TELEMETRY_PORT_8000 // STATION: HARTBEESPOORT_01
+      </footer>
     </div>
   );
 }
