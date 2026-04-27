@@ -27,11 +27,13 @@ export default function DataAnalysisPage() {
   const liveUpdate = useLiveUpdates();
 
   const fetchAnalysis = useCallback(async () => {
+    setIsLoading(true); // Zorgt ervoor dat we de "Syncing..." text zien bij het wisselen van datum
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
     console.log(`[IWIS DEBUG] Connecting to Backend at: ${apiBaseUrl}`);
     
-    // Fetch correlations
     let corrUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/correlations`;
+    let trendUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/trends`;
+    
     const params = new URLSearchParams();
     if (timeRange !== "all") {
       const start = new Date();
@@ -39,10 +41,12 @@ export default function DataAnalysisPage() {
       if (timeRange === "30d") start.setDate(start.getDate() - 30);
       params.append("start_date", start.toISOString());
     }
-    if (params.toString()) corrUrl += `?${params.toString()}`;
 
-    // Fetch trends
-    const trendUrl = `${apiBaseUrl.replace(/\/$/, "")}/analysis/trends`;
+    const queryString = params.toString();
+    if (queryString) {
+      corrUrl += `?${queryString}`;
+      trendUrl += `?${queryString}`; // FIX: Nu filtert de back-end ook de grafiek-data netjes mee!
+    }
 
     try {
       const [corrRes, trendRes] = await Promise.all([
@@ -84,6 +88,26 @@ export default function DataAnalysisPage() {
   // Helper to safely get keys
   const getSafeKeys = (obj: any) => obj ? Object.keys(obj) : [];
 
+  // Explanations for the statistics
+  const metricDescriptions: Record<string, string> = {
+    ph: "Measures how acidic or basic the water is. 7.0 is neutral.",
+    temp: "Water warmth. Sudden spikes can shock aquatic life.",
+    nitrate: "Nutrient often from fertilizers. Too much causes algae blooms.",
+    do: "Dissolved Oxygen. Breathable oxygen for aquatic life. Higher is better.",
+    turbidity: "Measures water cloudiness. High turbidity blocks sunlight."
+  };
+
+  // Common styling for the info boxes
+  const detailsStyle = {
+    fontSize: '0.875rem',
+    color: '#4a5568',
+    backgroundColor: '#f7fafc',
+    padding: '1rem',
+    borderRadius: '8px',
+    marginBottom: '1rem',
+    cursor: 'pointer'
+  };
+
   return (
     <section className="page-content analysis-page" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       <div className="analysis-top-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -116,7 +140,19 @@ export default function DataAnalysisPage() {
           
           {/* Trend Chart Row */}
           <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>📈 WQI Trend</h3>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>WQI Trend</h3>
+            
+            <details style={detailsStyle}>
+              <summary style={{ fontWeight: 'bold', outline: 'none' }}>How to read this chart?</summary>
+              <div style={{ marginTop: '0.5rem', lineHeight: '1.5' }}>
+                The <strong>Water Quality Index (WQI)</strong> is a general health score for the water from 0 to 100.<br/>
+                • <strong>High (70-100):</strong> Excellent health. The water is clean and supports a thriving ecosystem.<br/>
+                • <strong>Low (Below 50):</strong> Poor quality. This indicates pollution or harmful conditions.<br/>
+                • <strong>Sudden Dips:</strong> A sharp drop usually means a specific event occurred, like a heavy rainstorm washing in dirt or a pollution spill.<br/>
+                • <strong>Steady Trends:</strong> A gradual downward slope means slowly worsening conditions, while an upward slope means recovery.
+              </div>
+            </details>
+
             <div style={{ height: '300px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trends}>
@@ -131,9 +167,20 @@ export default function DataAnalysisPage() {
           </article>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-            {/* Correlation Matrix with Safety Check */}
+            {/* Correlation Matrix */}
             <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>Correlation Matrix</h3>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>Correlation Matrix</h3>
+              
+              <details style={detailsStyle}>
+                <summary style={{ fontWeight: 'bold', outline: 'none' }}>How to read these correlations?</summary>
+                <div style={{ marginTop: '0.5rem', lineHeight: '1.5' }}>
+                  This matrix finds hidden relationships between metrics. Numbers range from -1.00 to 1.00.<br/>
+                  • <strong className="text-red-800">Positive (Near 1.00):</strong> They move together. If one goes up, the other goes up (e.g., high Turbidity often happens with high Nitrate).<br/>
+                  • <strong className="text-blue-800">Negative (Near -1.00):</strong> They move in opposite directions. (e.g., as Temperature goes up, Dissolved Oxygen usually goes down).<br/>
+                  • <strong>Near 0.00:</strong> No predictable relationship between the two metrics.
+                </div>
+              </details>
+
               {data?.correlations ? (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
@@ -150,7 +197,7 @@ export default function DataAnalysisPage() {
                         <tr key={rowVar}>
                           <td style={{ fontWeight: 'bold', textTransform: 'capitalize' }}>{rowVar}</td>
                           {getSafeKeys(data.correlations).map(colVar => (
-                            <td key={colVar} className={getCorrelationColor(data.correlations[rowVar][colVar])} style={{ padding: '0.5rem', textAlign: 'center' }}>
+                            <td key={colVar} className={getCorrelationColor(data.correlations[rowVar][colVar])} style={{ padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
                               {data.correlations[rowVar][colVar].toFixed(2)}
                             </td>
                           ))}
@@ -162,15 +209,22 @@ export default function DataAnalysisPage() {
               ) : <p>Loading correlation data...</p>}
             </article>
 
-            {/* Statistics with Safety Check */}
+            {/* Baseline Statistics */}
             <article className="analysis-block" style={{ padding: '1.5rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
               <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>Baseline Statistics</h3>
               {data?.statistics ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  {getSafeKeys(data.statistics).slice(0, 4).map(metric => (
-                    <div key={metric} style={{ padding: '1rem', border: '1px solid #edf2f7', borderRadius: '8px' }}>
-                      <h4 style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#718096', textTransform: 'uppercase' }}>{metric}</h4>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{data.statistics[metric].mean?.toFixed(1) || "0.0"}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                  {getSafeKeys(data.statistics).slice(0, 5).map(metric => (
+                    <div key={metric} style={{ padding: '1rem', border: '1px solid #edf2f7', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h4 style={{ fontSize: '0.875rem', fontWeight: 'bold', color: '#2d3748', textTransform: 'uppercase' }}>{metric}</h4>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#3182ce' }}>
+                          {data.statistics[metric].mean?.toFixed(1) || "0.0"}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: '#718096', marginTop: '0.5rem', marginBottom: '0' }}>
+                        {metricDescriptions[metric.toLowerCase()] || "Key water quality indicator."}
+                      </p>
                     </div>
                   ))}
                 </div>
