@@ -79,7 +79,6 @@ export default function ChatWidget() {
         <div className="chat-window">
           <header className="chat-header">
             <h3>IWIS Assistant</h3>
-            <span>Online</span>
           </header>
 
           <div className="chat-messages">
@@ -116,7 +115,7 @@ export default function ChatWidget() {
         .chat-widget-container { position: fixed; bottom: 2rem; right: 2rem; z-index: 1000; font-family: system-ui, sans-serif; }
         .chat-toggle-btn { width: 3.5rem; height: 3.5rem; border-radius: 50%; background: #2b6cb0; color: white; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 1.5rem; display: flex; align-items: center; justify-content: center; }
         .chat-window { position: absolute; bottom: 4.5rem; right: 0; width: 320px; height: 450px; background: white; border-radius: 16px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #e2e8f0; }
-        .chat-header { background: #1a202c; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header { background: #144d92; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
         .chat-header h3 { margin: 0; font-size: 0.9rem; font-weight: 800; }
         .chat-header span { font-size: 0.7rem; color: #48bb78; font-weight: 800; text-transform: uppercase; }
         .chat-messages { flex: 1; padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; background: #f8fafc; }
