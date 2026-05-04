@@ -123,7 +123,7 @@ export default function AlertsPage() {
               <tr style={{ borderBottom: '1px solid #2d3748', color: '#2d3748' }}>
                 <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>ID</th>
                 <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>PRIORITY</th>
-                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>INCIDENT TYPE</th>
+                <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>INCIDENT_TYPE</th>
                 <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>VALUE</th>
                 <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>TIMESTAMP</th>
                 <th style={{ padding: '10px 8px', fontWeight: 'bold' }}>ACTION</th>
